@@ -5,14 +5,15 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
-// enough when changing adapters.
-// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
+// Managed entirely by @shopify/shopify-app-session-storage-prisma. Deliberately NOT covered by
+// row-level security: the session storage library issues plain Prisma calls without going
+// through withShop()/set_config(), so enabling RLS here would silently break login instead of
+// enforcing anything. See docs/PLAN.md, "Multi-tenancy".
 model Session {
   id            String    @id
   shop          String
@@ -31,4 +32,117 @@ model Session {
   emailVerified Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
+
+  @@index([shop])
+}
+
+// The tenant-identity table. Deliberately NOT covered by row-level security: every lookup is by
+// its own primary key (the exact shop domain from the session or a verified header), so there's
+// no "other tenant's row" a missing WHERE clause could leak. See docs/PLAN.md.
+model Shop {
+  shopDomain    String    @id
+  installedAt   DateTime  @default(now())
+  uninstalledAt DateTime?
+
+  orders     Order[]
+  comments   OrderComment[]
+  settings   ShopSetting[]
+  deliveries ProcessedDelivery[]
+}
+
+enum OrderStatus {
+  NEEDS_ATTENTION
+  COMPLETED
+  CANCELLED
+  STALE
+  DELETED
+}
+
+model Order {
+  shopDomain     String
+  shopifyOrderId String // gid://shopify/Order/...
+
+  name              String?
+  financialStatus   String? // Order.displayFinancialStatus, kept as-is (unstable API can add values)
+  fulfillmentStatus String? // Order.displayFulfillmentStatus
+
+  isCancelled   Boolean   @default(false)
+  cancelledAt   DateTime?
+  refundPending Boolean   @default(false) // cancelled but money is still captured/held
+
+  shopifyClosed   Boolean   @default(false) // Order.closed
+  shopifyClosedAt DateTime?
+
+  isTest Boolean @default(false)
+
+  totalAmount   Decimal? @db.Decimal(19, 4)
+  totalCurrency String?
+  itemsCount    Int?
+
+  shopifyCreatedAt DateTime? // Order.createdAt
+  shopifyUpdatedAt DateTime? // Order.updatedAt — the out-of-order-delivery version stamp
+  lastTriggeredAt  DateTime? // shopify-triggered-at fallback when updatedAt is unavailable (STALE)
+
+  orderStatus OrderStatus @default(NEEDS_ATTENTION)
+  staleSince  DateTime? // set when orderStatus becomes STALE
+
+  firstSeenAt DateTime  @default(now())
+  deletedAt   DateTime? // set when orderStatus becomes DELETED; row is retained, not removed
+
+  shop     Shop           @relation(fields: [shopDomain], references: [shopDomain], onDelete: Restrict)
+  comments OrderComment[]
+
+  @@id([shopDomain, shopifyOrderId])
+  @@index([shopDomain, orderStatus, shopifyCreatedAt, shopifyOrderId]) // Needs attention tab
+  @@index([shopDomain, orderStatus, shopifyUpdatedAt]) // Completed/Cancelled/Stale tabs
+}
+
+model OrderComment {
+  id             String   @id @default(uuid())
+  shopDomain     String
+  shopifyOrderId String
+  body           String
+
+  authorUserId BigInt?
+  authorName   String? // captured at write time from the online session; not re-derived later
+
+  createdAt DateTime @default(now())
+
+  // Edit/delete are implemented end-to-end in app/lib/db/comments.server.ts but are not
+  // reachable from the UI yet — gated behind COMMENT_EDITING_ENABLED (see docs/PLAN.md).
+  editedAt        DateTime?
+  deletedAt       DateTime?
+  deletedByUserId BigInt?
+
+  shop  Shop  @relation(fields: [shopDomain], references: [shopDomain], onDelete: Restrict)
+  order Order @relation(fields: [shopDomain, shopifyOrderId], references: [shopDomain, shopifyOrderId], onDelete: Restrict)
+
+  @@index([shopDomain, shopifyOrderId, createdAt(sort: Desc)])
+}
+
+// Webhook dedup log. Unlike everything else in this schema, these rows are plumbing, not
+// history — purged after 14 days (SQS's own max message retention), so a dedup check can never
+// need to look further back than that.
+model ProcessedDelivery {
+  shopDomain  String
+  webhookId   String
+  processedAt DateTime @default(now())
+
+  shop Shop @relation(fields: [shopDomain], references: [shopDomain], onDelete: Restrict)
+
+  @@id([shopDomain, webhookId])
+  @@index([processedAt])
+}
+
+// General-purpose per-shop settings (age-coloring rules, "show test orders", and anything added
+// later), rather than a one-off table per feature.
+model ShopSetting {
+  shopDomain String
+  key        String
+  value      Json
+  updatedAt  DateTime @updatedAt
+
+  shop Shop @relation(fields: [shopDomain], references: [shopDomain], onDelete: Restrict)
+
+  @@id([shopDomain, key])
 }

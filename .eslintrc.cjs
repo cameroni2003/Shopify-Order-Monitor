@@ -89,6 +89,25 @@ module.exports = {
         node: true,
       },
     },
+
+    // Guardrail: tenant tables are row-level-secured, but only for callers that go through
+    // withShop() in app/lib/db (and the worker's equivalent). This is a best-effort lint check,
+    // not the real enforcement — see app/lib/db/README.md.
+    {
+      files: ["**/*.{ts,tsx}"],
+      excludedFiles: ["app/lib/db/**", "worker/lib/db/**"],
+      rules: {
+        "no-restricted-syntax": [
+          "error",
+          {
+            selector:
+              "MemberExpression[object.name=/^(db|tx|prisma)$/][property.name=/^(order|orderComment|shopSetting|processedDelivery)$/]",
+            message:
+              "Access tenant tables only through app/lib/db/*.server.ts (or worker/lib/db) using withShop().",
+          },
+        ],
+      },
+    },
   ],
   globals: {
     shopify: "readonly"
