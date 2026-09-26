@@ -20,13 +20,16 @@
     "typecheck": "react-router typegen && tsc --noEmit",
     "test": "vitest run",
     "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "worker": "bun run worker/index.ts",
+    "worker:peek": "bun run worker/scripts/peek-queue.ts"
   },
   "type": "module",
   "engines": {
     "node": ">=20.19 <22 || >=22.12"
   },
   "dependencies": {
+    "@aws-sdk/client-sqs": "^3.1141.0",
     "@prisma/client": "^6.16.3",
     "@react-router/dev": "7.18.2",
     "@react-router/fs-routes": "7.18.2",
@@ -40,6 +43,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router": "7.18.2",
+    "sqs-consumer": "^15.0.4",
     "vite-tsconfig-paths": "^6.0.4",
     "zod": "^4.6.5"
   },

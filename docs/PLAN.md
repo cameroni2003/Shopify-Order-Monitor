@@ -157,10 +157,24 @@ Shopify's instruction (not on uninstall — uninstall only sets `uninstalledAt`)
 
 ## Milestones
 
-1. **This one**: Postgres via docker-compose, schema + migrations with RLS, shop-scoping data
-   access layer, `evaluateOrderStatus` with full decision-table unit tests.
-2. Worker end-to-end against the real SQS queue (also settles the EventBridge→SQS envelope shape
-   with a captured real payload).
+1. **Done**: Postgres via docker-compose, schema + migrations with RLS, shop-scoping data access
+   layer, `evaluateOrderStatus` with full decision-table unit tests.
+2. **Done** (with one open item — see below): queue provider abstraction
+   (`worker/queue/queue-provider.ts`), the AWS SQS implementation (`sqs-consumer` +
+   `@aws-sdk/client-sqs`), delivery normalization with payload_url overflow handling
+   (`shared/shopify-delivery.ts`), and the order-upsert write path
+   (`shared/order-write-plan.ts` + `app/lib/db/orders.server.ts::applyOrderEvent`) — verified
+   end-to-end against the real local Postgres (create → dedup → status transition →
+   out-of-order-delivery rejection, all as designed).
+
+   **Open item**: the exact shape EventBridge uses to wrap an Events delivery into an SQS message
+   body isn't published for the (developer-preview) Events framework specifically.
+   `worker/eventbridge-envelope.ts` assumes the same `detail.metadata`/`detail.payload` wrapper
+   documented for classic Shopify webhooks over EventBridge, and is written to fail with a
+   diagnostic dump rather than silently misreading a message if that's wrong. `worker/scripts/
+   peek-queue.ts` non-destructively inspects one real message on the queue to confirm or correct
+   this — run it (`bun run worker:peek`) after triggering a real order status change, with AWS
+   credentials available, and adjust `eventbridge-envelope.ts` if the real shape differs.
 3. App Home tabs + table.
 4. Order detail page + comments.
 5. Settings page.
