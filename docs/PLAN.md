@@ -135,7 +135,8 @@ Shopify's instruction (not on uninstall — uninstall only sets `uninstalledAt`)
   - **Cancelled** (`/app/cancelled`) — newest first, "Refund pending" badge where `refundPending`.
   - **Stale (60+ days)** (`/app/stale`) — newest first, shows last-known status values.
 - Columns: Order (name, links to admin), Age in days (colored per the shop's age rules), Payment
-  status, Fulfillment status, Total, Items, Last updated (days + hours), Comments (chat icon +
+  status, Fulfillment status, Total, Items, Last updated (single-unit: minutes, then hours from
+  60m, then days from 24h — `shared/format.ts::formatTimeSince`), Comments (chat icon +
   count, links to the order page).
 - Row badges (not columns): Test, Refund pending, Stale since.
 - Settings page: arbitrary number of age rules (`{id, thresholdDays, color}`), evaluated

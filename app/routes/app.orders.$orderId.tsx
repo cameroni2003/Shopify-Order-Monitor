@@ -9,7 +9,7 @@ import { addComment, countComments, listComments } from "../lib/db/comments.serv
 import {
   ageInDays,
   buildAdminOrderUrl,
-  formatDaysHoursSince,
+  formatTimeSince,
   formatMoney,
   numericIdFromGid,
 } from "../../shared/format";
@@ -35,7 +35,7 @@ function serializeOrder(
     total: formatMoney(order.totalAmount?.toString() ?? null, order.totalCurrency),
     itemsCount: order.itemsCount,
     ageLabel: ageDays == null ? "—" : `${ageDays}d`,
-    lastUpdated: formatDaysHoursSince(order.shopifyUpdatedAt ?? order.lastTriggeredAt, now),
+    lastUpdated: formatTimeSince(order.shopifyUpdatedAt ?? order.lastTriggeredAt, now),
     isTest: order.isTest,
     refundPending: order.refundPending,
     isDeleted: order.orderStatus === "DELETED",

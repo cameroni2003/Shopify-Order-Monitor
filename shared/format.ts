@@ -5,6 +5,7 @@
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
 
 /** Whole days elapsed between `from` and `now`, or null if `from` is unknown. Used for the Age
  * column and for evaluating age-rule thresholds (shared/age-rules.ts). */
@@ -13,15 +14,28 @@ export function ageInDays(from: Date | null, now: Date): number | null {
   return Math.floor((now.getTime() - from.getTime()) / DAY_MS);
 }
 
-/** "3d 4h" / "4h" / "just now" — used for the Age and Last updated columns, which the plan
- * calls for in days-and-hours rather than a relative "3 days ago" phrasing. */
-export function formatDaysHoursSince(from: Date | null, now: Date): string {
+/**
+ * "just now" / "45m" / "6h" / "3d" — a single unit at a time, escalating as the gap grows
+ * (minutes under an hour, hours under a day, days from then on), rather than combining units
+ * (no "3d 5h"). Used for the Last updated column.
+ *
+ * The previous version bucketed anything under an hour as flatly "just now" regardless of
+ * whether it was 1 minute or 59 — a real bug (an order updated 40 minutes ago looked identical
+ * to one updated 40 seconds ago), not just a formatting preference.
+ */
+export function formatTimeSince(from: Date | null, now: Date): string {
   if (from == null) return "—";
   const elapsedMs = Math.max(0, now.getTime() - from.getTime());
+
+  const minutes = Math.floor(elapsedMs / MINUTE_MS);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m`;
+
+  const hours = Math.floor(elapsedMs / HOUR_MS);
+  if (hours < 24) return `${hours}h`;
+
   const days = Math.floor(elapsedMs / DAY_MS);
-  const hours = Math.floor((elapsedMs % DAY_MS) / HOUR_MS);
-  if (days === 0 && hours === 0) return "just now";
-  return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
+  return `${days}d`;
 }
 
 /** "$84.50 USD" — Shopify's Money `amount` arrives as a decimal string; avoid float math on it. */

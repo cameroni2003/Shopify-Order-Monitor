@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   ageInDays,
   buildAdminOrderUrl,
-  formatDaysHoursSince,
   formatMoney,
+  formatTimeSince,
   numericIdFromGid,
 } from "./format";
 
@@ -19,33 +19,57 @@ describe("ageInDays", () => {
   });
 });
 
-describe("formatDaysHoursSince", () => {
+describe("formatTimeSince", () => {
   it("returns an em dash when the date is unknown", () => {
-    expect(formatDaysHoursSince(null, new Date())).toBe("—");
+    expect(formatTimeSince(null, new Date())).toBe("—");
   });
 
-  it("formats days and hours", () => {
+  it("says just now for sub-minute gaps", () => {
+    const from = new Date("2026-09-20T00:00:00.000Z");
+    const now = new Date("2026-09-20T00:00:30.000Z");
+    expect(formatTimeSince(from, now)).toBe("just now");
+  });
+
+  it("shows minutes once at least a minute has passed", () => {
+    const from = new Date("2026-09-20T00:00:00.000Z");
+    const now = new Date("2026-09-20T00:01:00.000Z");
+    expect(formatTimeSince(from, now)).toBe("1m");
+  });
+
+  it("keeps showing minutes right up to the last minute before an hour", () => {
+    const from = new Date("2026-09-20T00:00:00.000Z");
+    const now = new Date("2026-09-20T00:59:00.000Z");
+    expect(formatTimeSince(from, now)).toBe("59m");
+  });
+
+  it("switches to hours at exactly one hour", () => {
+    const from = new Date("2026-09-20T00:00:00.000Z");
+    const now = new Date("2026-09-20T01:00:00.000Z");
+    expect(formatTimeSince(from, now)).toBe("1h");
+  });
+
+  it("shows a single hours figure, not combined with minutes, right up to a day", () => {
+    const from = new Date("2026-09-20T00:00:00.000Z");
+    const now = new Date("2026-09-20T23:59:00.000Z");
+    expect(formatTimeSince(from, now)).toBe("23h");
+  });
+
+  it("switches to days at exactly one day", () => {
+    const from = new Date("2026-09-20T00:00:00.000Z");
+    const now = new Date("2026-09-21T00:00:00.000Z");
+    expect(formatTimeSince(from, now)).toBe("1d");
+  });
+
+  it("shows a single days figure for multi-day gaps", () => {
     const from = new Date("2026-09-20T00:00:00.000Z");
     const now = new Date("2026-09-23T05:00:00.000Z");
-    expect(formatDaysHoursSince(from, now)).toBe("3d 5h");
-  });
-
-  it("omits the day component when under a day", () => {
-    const from = new Date("2026-09-20T00:00:00.000Z");
-    const now = new Date("2026-09-20T05:00:00.000Z");
-    expect(formatDaysHoursSince(from, now)).toBe("5h");
-  });
-
-  it("says just now for sub-hour gaps", () => {
-    const from = new Date("2026-09-20T00:00:00.000Z");
-    const now = new Date("2026-09-20T00:10:00.000Z");
-    expect(formatDaysHoursSince(from, now)).toBe("just now");
+    expect(formatTimeSince(from, now)).toBe("3d");
   });
 
   it("never goes negative for a slightly-future timestamp (clock skew)", () => {
     const from = new Date("2026-09-20T00:00:10.000Z");
     const now = new Date("2026-09-20T00:00:00.000Z");
-    expect(formatDaysHoursSince(from, now)).toBe("just now");
+    expect(formatTimeSince(from, now)).toBe("just now");
   });
 });
 

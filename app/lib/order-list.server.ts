@@ -5,7 +5,7 @@ import { resolveAgeColor } from "../../shared/age-rules";
 import {
   ageInDays,
   buildAdminOrderUrl,
-  formatDaysHoursSince,
+  formatTimeSince,
   formatMoney,
   numericIdFromGid,
 } from "../../shared/format";
@@ -96,7 +96,7 @@ export async function loadOrderListPage({ shopDomain, status, url, basePath }: L
       fulfillmentTone: fulfillmentStatusTone(row.fulfillmentStatus),
       total: formatMoney(row.totalAmount?.toString() ?? null, row.totalCurrency),
       itemsCount: row.itemsCount,
-      lastUpdated: formatDaysHoursSince(row.shopifyUpdatedAt ?? row.lastTriggeredAt, now),
+      lastUpdated: formatTimeSince(row.shopifyUpdatedAt ?? row.lastTriggeredAt, now),
       commentCount: commentCounts[row.shopifyOrderId] ?? 0,
       isTest: row.isTest,
       refundPending: row.refundPending,
