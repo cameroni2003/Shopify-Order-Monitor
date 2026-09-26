@@ -17,7 +17,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function StalePage() {
   const data = useLoaderData<typeof loader>();
-  return <OrderListView heading="Stale (60+ days)" data={data} />;
+  return <OrderListView heading="Stale (60+ days)" data={data} basePath="/app/stale" />;
 }
 
 export const headers: HeadersFunction = (headersArgs) => {

@@ -17,7 +17,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function NeedsAttentionPage() {
   const data = useLoaderData<typeof loader>();
-  return <OrderListView heading="Needs attention" data={data} />;
+  return <OrderListView heading="Needs attention" data={data} basePath="/app" />;
 }
 
 export const headers: HeadersFunction = (headersArgs) => {

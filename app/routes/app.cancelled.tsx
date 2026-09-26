@@ -17,7 +17,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function CancelledPage() {
   const data = useLoaderData<typeof loader>();
-  return <OrderListView heading="Cancelled" data={data} />;
+  return <OrderListView heading="Cancelled" data={data} basePath="/app/cancelled" />;
 }
 
 export const headers: HeadersFunction = (headersArgs) => {

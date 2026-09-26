@@ -12,6 +12,8 @@ const POLL_INTERVAL_MS = 5000;
 export interface OrderListViewProps {
   heading: string;
   data: OrderListPageData;
+  /** This page's own path (e.g. "/app/completed"), used to link to an order under the right nav item. */
+  basePath: string;
 }
 
 /**
@@ -19,7 +21,7 @@ export interface OrderListViewProps {
  * Stale — separate pages, one per status, linked from the app nav, not tabs on one route — see
  * docs/PLAN.md). Each route's default export is just `<OrderListView heading="..." data={...} />`.
  */
-export function OrderListView({ heading, data }: OrderListViewProps) {
+export function OrderListView({ heading, data, basePath }: OrderListViewProps) {
   const navigate = useNavigate();
   const revalidator = useRevalidator();
 
@@ -135,7 +137,7 @@ export function OrderListView({ heading, data }: OrderListViewProps) {
                   <s-table-cell>{order.itemsCount ?? "—"}</s-table-cell>
                   <s-table-cell>{order.lastUpdated}</s-table-cell>
                   <s-table-cell>
-                    <s-link href={`/app/orders/${encodeURIComponent(order.id)}`}>
+                    <s-link href={`${basePath}/orders/${encodeURIComponent(order.id)}`}>
                       <s-stack direction="inline" gap="small-200" alignItems="center">
                         <s-icon type="chat"></s-icon>
                         <s-text>{order.commentCount}</s-text>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useFetcher, useLoaderData } from "react-router";
+import { redirect, useFetcher, useLoaderData } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -19,9 +19,10 @@ import { financialStatusTone, fulfillmentStatusTone } from "../../shared/status-
 const COMMENTS_PAGE_SIZE = 25;
 
 /**
- * Where the breadcrumb should go back to — whichever status page this order actually lives on,
- * not a hardcoded "Needs attention". DELETED orders aren't listed on any page, so they fall back
- * to Needs attention (there's no correct destination for them).
+ * Where the breadcrumb should go back to, and — via this route's optional $status segment — what
+ * makes the left nav highlight the right item, since it's whichever status page this order
+ * actually lives on, not a hardcoded "Needs attention". DELETED orders aren't listed on any page,
+ * so they fall back to Needs attention (there's no correct destination for them).
  */
 const STATUS_PAGE: Record<string, { href: string; label: string }> = {
   NEEDS_ATTENTION: { href: "/app", label: "Needs attention" },
@@ -101,6 +102,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   const url = new URL(request.url);
+
+  // The URL's status segment (if any) is what makes the left nav highlight the right item —
+  // s-app-nav has no "active" override, it just matches the current path against each s-link's
+  // href, so this page's path has to actually fall under the right one. Canonicalize it here
+  // rather than trusting the link that got the visitor here (a bookmark, or an order whose
+  // status changed after the list page rendered the link).
+  const statusPage = STATUS_PAGE[order.orderStatus] ?? STATUS_PAGE.NEEDS_ATTENTION!;
+  const canonicalPath = `${statusPage.href}/orders/${encodeURIComponent(orderId)}`;
+  if (url.pathname !== canonicalPath) {
+    throw redirect(`${canonicalPath}${url.search}`);
+  }
+
   const commentsCursor = url.searchParams.get("commentsCursor") || undefined;
   const now = new Date();
   const commentsPage = await loadCommentsPage(shopDomain, orderId, commentsCursor, now);
@@ -187,7 +200,9 @@ export default function OrderDetail() {
   function loadMoreComments() {
     if (!nextCommentsCursor) return;
     const params = new URLSearchParams({ commentsCursor: nextCommentsCursor });
-    moreCommentsFetcher.load(`/app/orders/${encodeURIComponent(data.order.id)}?${params.toString()}`);
+    moreCommentsFetcher.load(
+      `${data.order.statusPage.href}/orders/${encodeURIComponent(data.order.id)}?${params.toString()}`,
+    );
   }
 
   return (

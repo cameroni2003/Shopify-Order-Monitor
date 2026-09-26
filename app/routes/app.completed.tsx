@@ -17,7 +17,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function CompletedPage() {
   const data = useLoaderData<typeof loader>();
-  return <OrderListView heading="Completed" data={data} />;
+  return <OrderListView heading="Completed" data={data} basePath="/app/completed" />;
 }
 
 export const headers: HeadersFunction = (headersArgs) => {
