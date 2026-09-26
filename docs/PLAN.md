@@ -227,5 +227,21 @@ Shopify's instruction (not on uninstall — uninstall only sets `uninstalledAt`)
    Verified against the real local Postgres: cross-shop lookup correctly returns null, comment
    pagination round-trips correctly across two pages, and posting a comment for a nonexistent
    order correctly fails closed on the `OrderComment` → `Order` foreign key.
-5. Settings page.
+5. **Done**: settings page (`app/routes/app.settings.tsx`, linked from `s-app-nav`). Arbitrary
+   number of age rules (threshold in days + a color picker), add/remove/edit freely, plus a "Show
+   test orders" switch — all through the general-purpose `ShopSetting` table and validated
+   `getAgeRules`/`setAgeRules`/`getShowTestOrders`/`setShowTestOrders` built in milestone 1. Uses
+   App Bridge's programmatic Save Bar (`shopify.saveBar.show/hide`, an explicit `<ui-save-bar>`),
+   driven by a single `hasUnsavedChanges` flag set on any row add/remove/edit, so structural
+   changes (not just field edits) reliably surface the save bar.
+
+   **Real bug caught by live-testing this against Postgres, not just unit tests**: `setSetting`
+   never ensured the `Shop` row existed before writing to `ShopSetting` (which has a FK to
+   `Shop`). Orders never hit this because `applyOrderEvent` always calls `ensureShop` first — but
+   a merchant opening Settings before any order event has ever landed for their shop (a very
+   normal thing to do right after install) would have hit a hard foreign-key-violation 500 on
+   their first save. Fixed by calling `ensureShop` in `setSetting` itself, mirroring the existing
+   pattern in `applyOrderEvent`. Also cleaned up: an invalid setting value used to throw a raw,
+   JSON-stringified Zod error; `setSetting` now formats a short, readable message per field
+   instead.
 6. Uninstall + compliance webhooks.

@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { AgeRule } from "../../../shared/age-rules";
 import { validateAgeRules } from "../../../shared/age-rules";
 import { withShop } from "./shop-scope.server";
+import { ensureShop } from "./shops.server";
 
 /**
  * General-purpose per-shop settings, stored as ShopSetting(shopDomain, key, value: Json) rather
@@ -57,9 +58,20 @@ export async function setSetting<K extends SettingKey>(
   value: SettingValue<K>,
 ): Promise<void> {
   const registered = settingsRegistry[key];
+  const schemaResult = registered.schema.safeParse(value);
+  if (!schemaResult.success) {
+    // schemaResult.error.message is a JSON-stringified issues array — fine for logs, but not
+    // something to put in front of a merchant. flatten() gives a short, readable message per
+    // field instead.
+    const messages = schemaResult.error.issues.map((issue) => {
+      const path = issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+      return `${path}${issue.message}`;
+    });
+    throw new Error(`Invalid ${key}: ${messages.join("; ")}`);
+  }
   // registered.schema is narrowed to a union across all keys, not to K specifically — safe to
   // assert here because `value` itself is already typed as SettingValue<K> by the signature.
-  const parsed = registered.schema.parse(value) as unknown as SettingValue<K>;
+  const parsed = schemaResult.data as unknown as SettingValue<K>;
 
   if (key === "ageRules") {
     const errors = validateAgeRules(parsed as AgeRule[]);
@@ -67,6 +79,12 @@ export async function setSetting<K extends SettingKey>(
       throw new Error(`Invalid age rules: ${errors.join("; ")}`);
     }
   }
+
+  // ShopSetting has a FK to Shop, and unlike orders (always preceded by an event that calls
+  // ensureShop — see applyOrderEvent), the Settings page can be the very first thing touched
+  // for a shop with no order events yet. Without this, that first save would fail with a
+  // foreign key violation instead of silently succeeding. ensureShop is idempotent.
+  await ensureShop(shopDomain);
 
   await withShop(shopDomain, (tx) =>
     tx.shopSetting.upsert({
