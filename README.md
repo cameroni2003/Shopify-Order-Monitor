@@ -43,6 +43,17 @@ wiped via Shopify's mandatory `shop/redact` compliance webhook.
 The four order list pages poll and revalidate every 5 seconds while the tab is visible, so the
 dashboard reflects new events without a manual refresh.
 
+## Screenshots
+
+**Needs attention** — the app's home page, listing every order that still needs action:
+
+![Needs attention list](docs/screenshots/needs-attention.png)
+
+**Order detail** — payment/fulfillment status, order info, and a timestamped, attributed
+comment thread for internal team notes:
+
+![Order detail with comments](docs/screenshots/order-detail-comments.png)
+
 ### Settings
 
 The settings page (linked from the app nav) controls two things, both stored per-shop and take
