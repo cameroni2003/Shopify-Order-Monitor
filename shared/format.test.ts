@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ageInDays,
   buildAdminOrderUrl,
+  formatAbsoluteDateTime,
   formatMoney,
   formatTimeSince,
   numericIdFromGid,
@@ -33,43 +34,60 @@ describe("formatTimeSince", () => {
   it("shows minutes once at least a minute has passed", () => {
     const from = new Date("2026-09-20T00:00:00.000Z");
     const now = new Date("2026-09-20T00:01:00.000Z");
-    expect(formatTimeSince(from, now)).toBe("1m");
+    expect(formatTimeSince(from, now)).toBe("1m ago");
   });
 
   it("keeps showing minutes right up to the last minute before an hour", () => {
     const from = new Date("2026-09-20T00:00:00.000Z");
     const now = new Date("2026-09-20T00:59:00.000Z");
-    expect(formatTimeSince(from, now)).toBe("59m");
+    expect(formatTimeSince(from, now)).toBe("59m ago");
   });
 
   it("switches to hours at exactly one hour", () => {
     const from = new Date("2026-09-20T00:00:00.000Z");
     const now = new Date("2026-09-20T01:00:00.000Z");
-    expect(formatTimeSince(from, now)).toBe("1h");
+    expect(formatTimeSince(from, now)).toBe("1h ago");
   });
 
   it("shows a single hours figure, not combined with minutes, right up to a day", () => {
     const from = new Date("2026-09-20T00:00:00.000Z");
     const now = new Date("2026-09-20T23:59:00.000Z");
-    expect(formatTimeSince(from, now)).toBe("23h");
+    expect(formatTimeSince(from, now)).toBe("23h ago");
   });
 
   it("switches to days at exactly one day", () => {
     const from = new Date("2026-09-20T00:00:00.000Z");
     const now = new Date("2026-09-21T00:00:00.000Z");
-    expect(formatTimeSince(from, now)).toBe("1d");
+    expect(formatTimeSince(from, now)).toBe("1d ago");
   });
 
   it("shows a single days figure for multi-day gaps", () => {
     const from = new Date("2026-09-20T00:00:00.000Z");
     const now = new Date("2026-09-23T05:00:00.000Z");
-    expect(formatTimeSince(from, now)).toBe("3d");
+    expect(formatTimeSince(from, now)).toBe("3d ago");
   });
 
   it("never goes negative for a slightly-future timestamp (clock skew)", () => {
     const from = new Date("2026-09-20T00:00:10.000Z");
     const now = new Date("2026-09-20T00:00:00.000Z");
     expect(formatTimeSince(from, now)).toBe("just now");
+  });
+});
+
+describe("formatAbsoluteDateTime", () => {
+  it("matches the requested format (MMMM D, YYYY, [at] h:mm A z), forced to UTC for determinism", () => {
+    const date = new Date("2026-09-26T18:05:00.000Z");
+    expect(formatAbsoluteDateTime(date, "UTC")).toBe("September 26, 2026, at 6:05 PM UTC");
+  });
+
+  it("has no leading zero on the day or the hour", () => {
+    const date = new Date("2026-01-05T09:05:00.000Z");
+    expect(formatAbsoluteDateTime(date, "UTC")).toBe("January 5, 2026, at 9:05 AM UTC");
+  });
+
+  it("keeps the leading zero on minutes under 10", () => {
+    const date = new Date("2026-09-26T18:05:00.000Z");
+    expect(formatAbsoluteDateTime(date, "UTC")).toContain(":05 ");
   });
 });
 

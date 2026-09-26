@@ -242,6 +242,19 @@ Shopify's instruction (not on uninstall — uninstall only sets `uninstalledAt`)
    Verified against the real local Postgres: cross-shop lookup correctly returns null, comment
    pagination round-trips correctly across two pages, and posting a comment for a nonexistent
    order correctly fails closed on the `OrderComment` → `Order` foreign key.
+
+   **Follow-up fixes** (post-milestone, on request): the breadcrumb now goes back to whichever
+   status page the order actually lives on (`STATUS_PAGE` lookup keyed by `orderStatus`), not a
+   hardcoded Needs attention — it was sending merchants to the wrong page for anything that
+   wasn't a needs-attention order. The Test badge moved from the general badge row to sit right
+   next to the "Order details" heading (Polaris App Home's `s-page` has no accessory/badge slot
+   in this version to put it in the title bar itself, confirmed via the validator, so this was
+   the documented fallback). "View in Shopify admin" is now "View Order" with padding separating
+   it from the grid above; the comment form has padding below its Post button. Comment
+   timestamps now read like Last updated ("10m ago") instead of a raw ISO string, with a native
+   tooltip (`title` attribute) giving the full local date/time via a new
+   `formatAbsoluteDateTime` helper — timezone-dependent, so it's computed client-side, not in
+   the loader.
 5. **Done**: settings page (`app/routes/app.settings.tsx`, linked from `s-app-nav`). Arbitrary
    number of age rules (threshold in days + a color picker), add/remove/edit freely, plus a "Show
    test orders" switch — all through the general-purpose `ShopSetting` table and validated

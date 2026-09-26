@@ -9,6 +9,7 @@ import { addComment, countComments, listComments } from "../lib/db/comments.serv
 import {
   ageInDays,
   buildAdminOrderUrl,
+  formatAbsoluteDateTime,
   formatTimeSince,
   formatMoney,
   numericIdFromGid,
@@ -16,6 +17,19 @@ import {
 import { financialStatusTone, fulfillmentStatusTone } from "../../shared/status-badge";
 
 const COMMENTS_PAGE_SIZE = 25;
+
+/**
+ * Where the breadcrumb should go back to — whichever status page this order actually lives on,
+ * not a hardcoded "Needs attention". DELETED orders aren't listed on any page, so they fall back
+ * to Needs attention (there's no correct destination for them).
+ */
+const STATUS_PAGE: Record<string, { href: string; label: string }> = {
+  NEEDS_ATTENTION: { href: "/app", label: "Needs attention" },
+  COMPLETED: { href: "/app/completed", label: "Completed" },
+  CANCELLED: { href: "/app/cancelled", label: "Cancelled" },
+  STALE: { href: "/app/stale", label: "Stale" },
+  DELETED: { href: "/app", label: "Needs attention" },
+};
 
 function serializeOrder(
   order: NonNullable<Awaited<ReturnType<typeof findOrder>>>,
@@ -41,10 +55,16 @@ function serializeOrder(
     isDeleted: order.orderStatus === "DELETED",
     isStale: order.orderStatus === "STALE",
     staleSince: order.staleSince ? order.staleSince.toISOString() : null,
+    statusPage: STATUS_PAGE[order.orderStatus] ?? STATUS_PAGE.NEEDS_ATTENTION!,
   };
 }
 
-async function loadCommentsPage(shopDomain: string, orderId: string, cursor: string | undefined) {
+async function loadCommentsPage(
+  shopDomain: string,
+  orderId: string,
+  cursor: string | undefined,
+  now: Date,
+) {
   const [rows, totalCommentCount] = await Promise.all([
     listComments(shopDomain, orderId, { cursor, take: COMMENTS_PAGE_SIZE }),
     countComments(shopDomain, orderId),
@@ -56,7 +76,11 @@ async function loadCommentsPage(shopDomain: string, orderId: string, cursor: str
       id: c.id,
       body: c.body,
       authorName: c.authorName ?? "Unknown",
+      // Raw ISO for the client-side absolute-time tooltip (timezone-dependent, so it can't be
+      // computed here — see formatAbsoluteDateTime), plus the same "X ago" phrasing the Last
+      // updated field uses, computed server-side like everything else's relative time.
       createdAt: c.createdAt.toISOString(),
+      createdAtLabel: formatTimeSince(c.createdAt, now),
     })),
     totalCommentCount,
     hasMoreComments,
@@ -78,10 +102,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const url = new URL(request.url);
   const commentsCursor = url.searchParams.get("commentsCursor") || undefined;
-  const commentsPage = await loadCommentsPage(shopDomain, orderId, commentsCursor);
+  const now = new Date();
+  const commentsPage = await loadCommentsPage(shopDomain, orderId, commentsCursor, now);
 
   return {
-    order: serializeOrder(order, shopDomain, new Date()),
+    order: serializeOrder(order, shopDomain, now),
     ...commentsPage,
   };
 };
@@ -167,17 +192,22 @@ export default function OrderDetail() {
 
   return (
     <s-page heading={data.order.name}>
-      <s-link slot="breadcrumb-actions" href="/app">
-        Orders
+      <s-link slot="breadcrumb-actions" href={data.order.statusPage.href}>
+        {data.order.statusPage.label}
       </s-link>
 
-      <s-section heading="Order details">
+      <s-section>
         <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-heading>Order details</s-heading>
           {data.order.isTest && <s-badge>Test</s-badge>}
-          {data.order.refundPending && <s-badge tone="warning">Refund pending</s-badge>}
-          {data.order.isStale && <s-badge tone="info">Stale</s-badge>}
-          {data.order.isDeleted && <s-badge tone="critical">Deleted in Shopify</s-badge>}
         </s-stack>
+        {(data.order.refundPending || data.order.isStale || data.order.isDeleted) && (
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            {data.order.refundPending && <s-badge tone="warning">Refund pending</s-badge>}
+            {data.order.isStale && <s-badge tone="info">Stale</s-badge>}
+            {data.order.isDeleted && <s-badge tone="critical">Deleted in Shopify</s-badge>}
+          </s-stack>
+        )}
 
         <s-grid gridTemplateColumns="repeat(auto-fit, minmax(10rem, 1fr))" gap="base">
           <s-box>
@@ -221,27 +251,31 @@ export default function OrderDetail() {
         </s-grid>
 
         {data.order.adminUrl && (
-          <s-link href={data.order.adminUrl} target="_blank">
-            View in Shopify admin
-          </s-link>
+          <s-box paddingBlockStart="base">
+            <s-link href={data.order.adminUrl} target="_blank">
+              View Order
+            </s-link>
+          </s-box>
         )}
       </s-section>
 
       <s-section heading={`Comments (${data.totalCommentCount})`}>
-        <commentFetcher.Form method="post" key={formKey}>
-          <s-stack direction="block" gap="base">
-            <s-text-area
-              label="Add a comment"
-              name="body"
-              rows={3}
-              maxLength={5000}
-              required
-            ></s-text-area>
-            <s-button type="submit" variant="primary" {...(isSubmitting ? { loading: true } : {})}>
-              Post
-            </s-button>
-          </s-stack>
-        </commentFetcher.Form>
+        <s-box paddingBlockEnd="base">
+          <commentFetcher.Form method="post" key={formKey}>
+            <s-stack direction="block" gap="base">
+              <s-text-area
+                label="Add a comment"
+                name="body"
+                rows={3}
+                maxLength={5000}
+                required
+              ></s-text-area>
+              <s-button type="submit" variant="primary" {...(isSubmitting ? { loading: true } : {})}>
+                Post
+              </s-button>
+            </s-stack>
+          </commentFetcher.Form>
+        </s-box>
 
         <s-stack direction="block" gap="base">
           {comments.length === 0 ? (
@@ -251,7 +285,13 @@ export default function OrderDetail() {
               <s-box key={comment.id} padding="base" background="subdued" borderRadius="base">
                 <s-stack direction="inline" gap="small-200" alignItems="center">
                   <s-text type="strong">{comment.authorName}</s-text>
-                  <s-text color="subdued">{comment.createdAt}</s-text>
+                  {/* title (a native browser tooltip) is set from the raw ISO timestamp using
+                      the viewer's own local timezone — that's inherently a client-side
+                      computation (formatAbsoluteDateTime), not something the loader can get
+                      right for every viewer. */}
+                  <span title={formatAbsoluteDateTime(new Date(comment.createdAt))}>
+                    <s-text color="subdued">{comment.createdAtLabel}</s-text>
+                  </span>
                 </s-stack>
                 <s-paragraph>{comment.body}</s-paragraph>
               </s-box>

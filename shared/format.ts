@@ -15,9 +15,9 @@ export function ageInDays(from: Date | null, now: Date): number | null {
 }
 
 /**
- * "just now" / "45m" / "6h" / "3d" — a single unit at a time, escalating as the gap grows
- * (minutes under an hour, hours under a day, days from then on), rather than combining units
- * (no "3d 5h"). Used for the Last updated column.
+ * "just now" / "45m ago" / "6h ago" / "3d ago" — a single unit at a time, escalating as the gap
+ * grows (minutes under an hour, hours under a day, days from then on), rather than combining
+ * units (no "3d 5h"). Used for the Last updated column and comment timestamps.
  *
  * The previous version bucketed anything under an hour as flatly "just now" regardless of
  * whether it was 1 minute or 59 — a real bug (an order updated 40 minutes ago looked identical
@@ -29,13 +29,45 @@ export function formatTimeSince(from: Date | null, now: Date): string {
 
   const minutes = Math.floor(elapsedMs / MINUTE_MS);
   if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60) return `${minutes}m ago`;
 
   const hours = Math.floor(elapsedMs / HOUR_MS);
-  if (hours < 24) return `${hours}h`;
+  if (hours < 24) return `${hours}h ago`;
 
   const days = Math.floor(elapsedMs / DAY_MS);
-  return `${days}d`;
+  return `${days}d ago`;
+}
+
+/**
+ * "September 26, 2026, at 6:05 PM UTC" — the absolute-time tooltip for a relative timestamp
+ * (moment.js format equivalent: `MMMM D, YYYY, [at] h:mm A z`). Timezone-dependent, so this is
+ * meant to be called client-side (using the viewer's local zone), not from a loader — an
+ * optional `timeZone` override exists only so tests stay deterministic regardless of the
+ * machine running them.
+ */
+export function formatAbsoluteDateTime(date: Date, timeZone?: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+    ...(timeZone ? { timeZone } : {}),
+  }).formatToParts(date);
+
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+
+  const month = get("month");
+  const day = get("day");
+  const year = get("year");
+  const hour = get("hour");
+  const minute = get("minute");
+  const dayPeriod = get("dayPeriod").toUpperCase();
+  const zone = get("timeZoneName");
+
+  return `${month} ${day}, ${year}, at ${hour}:${minute} ${dayPeriod} ${zone}`;
 }
 
 /** "$84.50 USD" — Shopify's Money `amount` arrives as a decimal string; avoid float math on it. */
