@@ -9,15 +9,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   return loadOrderListPage({
     shopDomain: session.shop,
-    status: "NEEDS_ATTENTION",
+    status: "CANCELLED",
     url: new URL(request.url),
-    basePath: "/app",
+    basePath: "/app/cancelled",
   });
 };
 
-export default function NeedsAttentionPage() {
+export default function CancelledPage() {
   const data = useLoaderData<typeof loader>();
-  return <OrderListView heading="Needs attention" data={data} />;
+  return <OrderListView heading="Cancelled" data={data} />;
 }
 
 export const headers: HeadersFunction = (headersArgs) => {

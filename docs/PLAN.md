@@ -128,11 +128,12 @@ Shopify's instruction (not on uninstall — uninstall only sets `uninstalledAt`)
 
 ## App Home
 
-- Tabs, each independently paginated (keyset/cursor, 50/page):
-  - **Needs attention** (main tab) — `orderStatus = NEEDS_ATTENTION`, oldest first.
-  - **Completed** — newest first.
-  - **Cancelled** — newest first, "Refund pending" badge where `refundPending`.
-  - **Stale (60+ days)** — newest first, shows last-known status values.
+- Four separate pages (linked from `s-app-nav`), not tabs on one route — see "Design change:
+  tabs → separate pages" below for why. Each independently paginated (keyset/cursor, 50/page):
+  - **Needs attention** (`/app`) — `orderStatus = NEEDS_ATTENTION`, oldest first.
+  - **Completed** (`/app/completed`) — newest first.
+  - **Cancelled** (`/app/cancelled`) — newest first, "Refund pending" badge where `refundPending`.
+  - **Stale (60+ days)** (`/app/stale`) — newest first, shows last-known status values.
 - Columns: Order (name, links to admin), Age in days (colored per the shop's age rules), Payment
   status, Fulfillment status, Total, Items, Last updated (days + hours), Comments (chat icon +
   count, links to the order page).
@@ -205,11 +206,23 @@ Shopify's instruction (not on uninstall — uninstall only sets `uninstalledAt`)
 
    **Real-time updates** (added post-milestone, on request): App Home reads our own database
    (never Shopify live), so "real time" is client-side polling + React Router revalidation, not a
-   websocket/SSE server — no new infra. `app/routes/app._index.tsx` revalidates its own loader
-   every 5s while the tab is visible (paused via the Page Visibility API when it isn't, and
-   caught up immediately on refocus), skipping any tick where a revalidation is already in
-   flight. A small spinner next to the tabs is the only visible indicator; the table itself
-   updates in place with no navigation/scroll disruption.
+   websocket/SSE server — no new infra. The page revalidates its own loader every 5s while
+   visible (paused via the Page Visibility API when it isn't, and caught up immediately on
+   refocus), skipping any tick where a revalidation is already in flight. A small spinner is the
+   only visible indicator; the table itself updates in place with no navigation/scroll
+   disruption.
+
+   **Design change: tabs → separate pages** (post-milestone, on request): the user reported the
+   tab row (the `s-button-group` of `s-button href` links) wasn't visible at all. Rather than
+   debug that specific component further, switched to four separate pages — `/app`,
+   `/app/completed`, `/app/cancelled`, `/app/stale` — linked directly from `s-app-nav`, Settings
+   last. Shared logic was factored out so nothing was duplicated four times:
+   `app/lib/order-list.server.ts` (the loader logic — pagination, formatting, age-color
+   resolution) and `app/components/OrderListView.tsx` (the table + polling UI). Each route file
+   is now just its own status/heading/basePath plus a couple of lines wiring the two together.
+   This also sidesteps whatever was wrong with the tab-switcher UI, rather than fixing it, since
+   the per-page nav links (`s-link` in `s-app-nav`) were already confirmed working (Settings was
+   always reachable).
 4. **Done**: order detail page + comments (`app/routes/app.orders.$orderId.tsx`, reached from the
    Comments column). Header card with payment/fulfillment badges, total, items, age, last
    updated, a link to the order in the Shopify admin, and Test/Refund pending/Stale/Deleted-in-
