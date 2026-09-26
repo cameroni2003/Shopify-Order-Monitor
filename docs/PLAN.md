@@ -159,22 +159,29 @@ Shopify's instruction (not on uninstall — uninstall only sets `uninstalledAt`)
 
 1. **Done**: Postgres via docker-compose, schema + migrations with RLS, shop-scoping data access
    layer, `evaluateOrderStatus` with full decision-table unit tests.
-2. **Done** (with one open item — see below): queue provider abstraction
-   (`worker/queue/queue-provider.ts`), the AWS SQS implementation (`sqs-consumer` +
-   `@aws-sdk/client-sqs`), delivery normalization with payload_url overflow handling
-   (`shared/shopify-delivery.ts`), and the order-upsert write path
+2. **Done**: queue provider abstraction (`worker/queue/queue-provider.ts`), the AWS SQS
+   implementation (`sqs-consumer` + `@aws-sdk/client-sqs`), delivery normalization with
+   payload_url overflow handling (`shared/shopify-delivery.ts`), and the order-upsert write path
    (`shared/order-write-plan.ts` + `app/lib/db/orders.server.ts::applyOrderEvent`) — verified
    end-to-end against the real local Postgres (create → dedup → status transition →
    out-of-order-delivery rejection, all as designed).
 
-   **Open item**: the exact shape EventBridge uses to wrap an Events delivery into an SQS message
-   body isn't published for the (developer-preview) Events framework specifically.
-   `worker/eventbridge-envelope.ts` assumes the same `detail.metadata`/`detail.payload` wrapper
-   documented for classic Shopify webhooks over EventBridge, and is written to fail with a
-   diagnostic dump rather than silently misreading a message if that's wrong. `worker/scripts/
-   peek-queue.ts` non-destructively inspects one real message on the queue to confirm or correct
-   this — run it (`bun run worker:peek`) after triggering a real order status change, with AWS
-   credentials available, and adjust `eventbridge-envelope.ts` if the real shape differs.
+   The EventBridge→SQS envelope shape (undocumented for the Events developer-preview framework)
+   was confirmed against a real captured delivery: `detail.metadata` (headers, already lowercase,
+   no `X-` prefix) + `detail.payload` (the Shopify body) — exactly what
+   `worker/eventbridge-envelope.ts` assumed. Locked in as a permanent fixture test,
+   `worker/live-payload.test.ts`.
+
+   **New blocker found via that same capture, not a code bug**: this app hasn't been granted
+   Protected Customer Data access, so every Order query comes back `data.order: null` with a
+   `GraphQL errors[].extensions.code: "ACCESS_DENIED"` — regardless of the order's age. Our
+   dataMissing/STALE logic (correctly, per its own design) can't tell this apart from genuine
+   60-day staleness for an order it's never seen before, so every order currently lands in the
+   Stale tab. `worker/index.ts` now detects this specific error code and logs a loud, distinct
+   warning pointing at the fix rather than let it look like an age issue. **Action needed**:
+   Partner Dashboard → API access → Protected customer data → request access (self-serve, applies
+   immediately on a development store, no review needed for dev-only use). Re-trigger an order
+   event afterward to confirm `data.order` starts coming back populated.
 3. App Home tabs + table.
 4. Order detail page + comments.
 5. Settings page.
