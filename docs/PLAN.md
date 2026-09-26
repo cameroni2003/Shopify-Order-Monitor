@@ -210,6 +210,22 @@ Shopify's instruction (not on uninstall — uninstall only sets `uninstalledAt`)
    caught up immediately on refocus), skipping any tick where a revalidation is already in
    flight. A small spinner next to the tabs is the only visible indicator; the table itself
    updates in place with no navigation/scroll disruption.
-4. Order detail page + comments.
+4. **Done**: order detail page + comments (`app/routes/app.orders.$orderId.tsx`, reached from the
+   Comments column). Header card with payment/fulfillment badges, total, items, age, last
+   updated, a link to the order in the Shopify admin, and Test/Refund pending/Stale/Deleted-in-
+   Shopify badges. A comment textarea posts via a fetcher (so the page doesn't reload), shows an
+   App Bridge toast, and clears itself on success. Comments load newest-first, 25 at a time, with
+   a "Load more" button appending further pages via a second fetcher. A cross-shop or nonexistent
+   order id 404s (`findOrder` is RLS-scoped, so the two cases are indistinguishable from outside —
+   docs/PLAN.md's multi-tenancy guarantee holding here too).
+
+   Switched the app to online access tokens (`useOnlineTokens: true`) so comments can capture the
+   posting staff member's name (`session.onlineAccessInfo.associated_user`) at write time. Offline
+   tokens are still saved per Shopify's own docs on this setting, so the worker's needs are
+   unaffected (it doesn't call the Admin API today regardless).
+
+   Verified against the real local Postgres: cross-shop lookup correctly returns null, comment
+   pagination round-trips correctly across two pages, and posting a comment for a nonexistent
+   order correctly fails closed on the `OrderComment` → `Order` foreign key.
 5. Settings page.
 6. Uninstall + compliance webhooks.

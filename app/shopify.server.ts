@@ -16,6 +16,11 @@ const shopify = shopifyApp({
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,
+  // Online tokens give embedded routes the acting staff member's identity (session
+  // .onlineAccessInfo.associated_user), which order comments capture as authorName/authorUserId
+  // at write time (docs/PLAN.md). Both online and offline tokens are still saved per shop, so
+  // background access (the worker) is unaffected.
+  useOnlineTokens: true,
   future: {
     expiringOfflineAccessTokens: true,
   },

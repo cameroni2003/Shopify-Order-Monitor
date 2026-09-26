@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ageInDays, formatDaysHoursSince, formatMoney, numericIdFromGid } from "./format";
+import {
+  ageInDays,
+  buildAdminOrderUrl,
+  formatDaysHoursSince,
+  formatMoney,
+  numericIdFromGid,
+} from "./format";
 
 describe("ageInDays", () => {
   it("returns null when the date is unknown", () => {
@@ -64,5 +70,17 @@ describe("numericIdFromGid", () => {
 
   it("returns null for a non-GID string", () => {
     expect(numericIdFromGid("not-a-gid")).toBeNull();
+  });
+});
+
+describe("buildAdminOrderUrl", () => {
+  it("builds a legacy-style admin order URL", () => {
+    expect(buildAdminOrderUrl("test-shop.myshopify.com", "gid://shopify/Order/123")).toBe(
+      "https://test-shop.myshopify.com/admin/orders/123",
+    );
+  });
+
+  it("returns null when the numeric id can't be extracted", () => {
+    expect(buildAdminOrderUrl("test-shop.myshopify.com", "not-a-gid")).toBeNull();
   });
 });

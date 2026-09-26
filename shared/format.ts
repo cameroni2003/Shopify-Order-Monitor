@@ -39,3 +39,14 @@ export function numericIdFromGid(gid: string): string | null {
   const match = /\/(\d+)$/.exec(gid);
   return match ? match[1] : null;
 }
+
+/**
+ * A `https://{shop}.myshopify.com/admin/orders/{id}` link. Shopify redirects this legacy-style
+ * URL to the current admin domain regardless of which one the merchant actually uses, so it's a
+ * safe link to build without knowing the shop's admin.shopify.com handle. Returns null if the
+ * numeric id can't be extracted from the GID.
+ */
+export function buildAdminOrderUrl(shopDomain: string, shopifyOrderId: string): string | null {
+  const numericId = numericIdFromGid(shopifyOrderId);
+  return numericId ? `https://${shopDomain}/admin/orders/${numericId}` : null;
+}
