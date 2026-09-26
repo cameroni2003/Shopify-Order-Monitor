@@ -205,9 +205,17 @@ export default function AppIndex() {
                 </s-button>
               ))}
             </s-button-group>
-            {revalidator.state === "loading" && (
+            {/* Always mounted (never conditionally rendered) so it reserves its own space —
+                toggling visibility here, instead of adding/removing the element, is what keeps
+                the tabs and table from shifting when a background poll starts or finishes. */}
+            <span
+              style={{
+                visibility: revalidator.state === "loading" ? "visible" : "hidden",
+                display: "inline-flex",
+              }}
+            >
               <s-spinner size="base" accessibilityLabel="Refreshing orders"></s-spinner>
-            )}
+            </span>
           </s-stack>
         </s-box>
 
