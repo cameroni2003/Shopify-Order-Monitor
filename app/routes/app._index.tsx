@@ -1,249 +1,261 @@
-import { useEffect } from "react";
-import type {
-  ActionFunctionArgs,
-  HeadersFunction,
-  LoaderFunctionArgs,
-} from "react-router";
-import { useFetcher } from "react-router";
-import { useAppBridge } from "@shopify/app-bridge-react";
-import { authenticate } from "../shopify.server";
+import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
+import { useLoaderData, useNavigate } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import { authenticate } from "../shopify.server";
+import { getAgeRules, getShowTestOrders } from "../lib/db/settings.server";
+import { listNeedsAttentionOrders, listOrdersByStatus } from "../lib/db/orders.server";
+import { countCommentsForOrders } from "../lib/db/comments.server";
+import { resolveAgeColor } from "../../shared/age-rules";
+import {
+  ageInDays,
+  formatDaysHoursSince,
+  formatMoney,
+  numericIdFromGid,
+} from "../../shared/format";
+import { financialStatusTone, fulfillmentStatusTone } from "../../shared/status-badge";
+import type { OrderStatus } from "../../shared/order-status";
+
+const PAGE_SIZE = 50;
+
+interface TabDef {
+  id: string;
+  label: string;
+  status: OrderStatus;
+}
+
+// Order matches docs/PLAN.md: Needs attention first (it's the primary view), then the three
+// history tabs in the order a merchant would care about them.
+const TABS: TabDef[] = [
+  { id: "needs_attention", label: "Needs attention", status: "NEEDS_ATTENTION" },
+  { id: "completed", label: "Completed", status: "COMPLETED" },
+  { id: "cancelled", label: "Cancelled", status: "CANCELLED" },
+  { id: "stale", label: "Stale (60+ days)", status: "STALE" },
+];
+
+/**
+ * Cursor-stack encoding for "Previous" support over keyset pagination. Each `prev` param value
+ * is a comma-separated stack of ancestor cursors (an empty string element means "first page, no
+ * cursor"). Shopify order GIDs never contain commas, so this is a safe, dependency-free encoding
+ * — no need for JSON/base64 for something this simple.
+ */
+function decodeCursorStack(raw: string | null): string[] {
+  if (!raw) return [];
+  return raw.split(",");
+}
+
+function encodeCursorStack(stack: string[]): string {
+  return stack.join(",");
+}
+
+function buildPageUrl(params: {
+  tabId: string;
+  cursor?: string;
+  prevCursors?: string[];
+}): string {
+  const search = new URLSearchParams();
+  search.set("tab", params.tabId);
+  if (params.cursor) search.set("cursor", params.cursor);
+  if (params.prevCursors && params.prevCursors.length > 0) {
+    search.set("prev", encodeCursorStack(params.prevCursors));
+  }
+  return `/app?${search.toString()}`;
+}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
+  const shopDomain = session.shop;
 
-  return null;
-};
+  const url = new URL(request.url);
+  const requestedTabId = url.searchParams.get("tab");
+  const tab = TABS.find((t) => t.id === requestedTabId) ?? TABS[0]!;
+  const cursor = url.searchParams.get("cursor") || undefined;
+  const prevCursors = decodeCursorStack(url.searchParams.get("prev"));
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
-  const color = ["Red", "Orange", "Yellow", "Green"][
-    Math.floor(Math.random() * 4)
-  ];
-  const response = await admin.graphql(
-    `#graphql
-      mutation populateProduct($product: ProductCreateInput!) {
-        productCreate(product: $product) {
-          product {
-            id
-            title
-            handle
-            status
-            variants(first: 10) {
-              edges {
-                node {
-                  id
-                  price
-                  barcode
-                  createdAt
-                }
-              }
-            }
-          }
-        }
-      }`,
-    {
-      variables: {
-        product: {
-          title: `${color} Snowboard`,
-        },
-      },
-    },
-  );
-  const responseJson = await response.json();
+  const [ageRules, showTestOrders] = await Promise.all([
+    getAgeRules(shopDomain),
+    getShowTestOrders(shopDomain),
+  ]);
 
-  const product = responseJson.data!.productCreate!.product!;
-  const variantId = product.variants.edges[0]!.node!.id!;
+  const rows =
+    tab.id === "needs_attention"
+      ? await listNeedsAttentionOrders(shopDomain, {
+          cursor,
+          take: PAGE_SIZE,
+          includeTestOrders: showTestOrders,
+        })
+      : await listOrdersByStatus(
+          shopDomain,
+          tab.status as Exclude<OrderStatus, "DELETED" | "NEEDS_ATTENTION">,
+          { cursor, take: PAGE_SIZE, includeTestOrders: showTestOrders },
+        );
 
-  const variantResponse = await admin.graphql(
-    `#graphql
-    mutation shopifyReactRouterTemplateUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants {
-          id
-          price
-          barcode
-          createdAt
-        }
-      }
-    }`,
-    {
-      variables: {
-        productId: product.id,
-        variants: [{ id: variantId, price: "100.00" }],
-      },
-    },
+  const hasNextPage = rows.length > PAGE_SIZE;
+  const pageRows = rows.slice(0, PAGE_SIZE);
+  const nextCursor = hasNextPage ? pageRows[pageRows.length - 1]!.shopifyOrderId : null;
+  const hasPreviousPage = prevCursors.length > 0 || Boolean(cursor);
+
+  const commentCounts = await countCommentsForOrders(
+    shopDomain,
+    pageRows.map((r) => r.shopifyOrderId),
   );
 
-  const variantResponseJson = await variantResponse.json();
+  const now = new Date();
+
+  const orders = pageRows.map((row) => {
+    const ageDays = ageInDays(row.shopifyCreatedAt, now);
+    const numericId = numericIdFromGid(row.shopifyOrderId);
+    return {
+      id: row.shopifyOrderId,
+      name: row.name ?? (numericId ? `#${numericId}` : row.shopifyOrderId),
+      ageLabel: ageDays == null ? "—" : `${ageDays}d`,
+      ageColor: ageDays == null ? null : resolveAgeColor(ageDays, ageRules),
+      financialStatus: row.financialStatus,
+      financialTone: financialStatusTone(row.financialStatus),
+      fulfillmentStatus: row.fulfillmentStatus,
+      fulfillmentTone: fulfillmentStatusTone(row.fulfillmentStatus),
+      total: formatMoney(row.totalAmount?.toString() ?? null, row.totalCurrency),
+      itemsCount: row.itemsCount,
+      lastUpdated: formatDaysHoursSince(row.shopifyUpdatedAt ?? row.lastTriggeredAt, now),
+      commentCount: commentCounts[row.shopifyOrderId] ?? 0,
+      isTest: row.isTest,
+      refundPending: row.refundPending,
+      staleSince: row.staleSince,
+    };
+  });
 
   return {
-    product: responseJson!.data!.productCreate!.product,
-    variant:
-      variantResponseJson!.data!.productVariantsBulkUpdate!.productVariants,
+    tabId: tab.id,
+    tabs: TABS,
+    orders,
+    hasNextPage,
+    hasPreviousPage,
+    nextPageUrl: hasNextPage
+      ? buildPageUrl({
+          tabId: tab.id,
+          cursor: nextCursor ?? undefined,
+          prevCursors: [...prevCursors, cursor ?? ""],
+        })
+      : null,
+    previousPageUrl: hasPreviousPage
+      ? buildPageUrl({
+          tabId: tab.id,
+          cursor: prevCursors[prevCursors.length - 1] || undefined,
+          prevCursors: prevCursors.slice(0, -1),
+        })
+      : null,
   };
 };
 
-export default function Index() {
-  const fetcher = useFetcher<typeof action>();
-
-  const shopify = useAppBridge();
-  const isLoading =
-    ["loading", "submitting"].includes(fetcher.state) &&
-    fetcher.formMethod === "POST";
-
-  useEffect(() => {
-    if (fetcher.data?.product?.id) {
-      shopify.toast.show("Product created");
-    }
-  }, [fetcher.data?.product?.id, shopify]);
-
-  const generateProduct = () => fetcher.submit({}, { method: "POST" });
+export default function AppIndex() {
+  const data = useLoaderData<typeof loader>();
+  const navigate = useNavigate();
 
   return (
-    <s-page heading="Shopify app template">
-      <s-button slot="primary-action" onClick={generateProduct}>
-        Generate a product
-      </s-button>
-
-      <s-section heading="Congrats on creating a new Shopify app 🎉">
-        <s-paragraph>
-          This embedded app template uses{" "}
-          <s-link
-            href="https://shopify.dev/docs/apps/tools/app-bridge"
-            target="_blank"
-          >
-            App Bridge
-          </s-link>{" "}
-          interface examples like an{" "}
-          <s-link href="/app/additional">additional page in the app nav</s-link>
-          , as well as an{" "}
-          <s-link
-            href="https://shopify.dev/docs/api/admin-graphql"
-            target="_blank"
-          >
-            Admin GraphQL
-          </s-link>{" "}
-          mutation demo, to provide a starting point for app development.
-        </s-paragraph>
-      </s-section>
-      <s-section heading="Get started with products">
-        <s-paragraph>
-          Generate a product with GraphQL and get the JSON output for that
-          product. Learn more about the{" "}
-          <s-link
-            href="https://shopify.dev/docs/api/admin-graphql/latest/mutations/productCreate"
-            target="_blank"
-          >
-            productCreate
-          </s-link>{" "}
-          mutation in our API references.
-        </s-paragraph>
-        <s-stack direction="inline" gap="base">
-          <s-button
-            onClick={generateProduct}
-            {...(isLoading ? { loading: true } : {})}
-          >
-            Generate a product
-          </s-button>
-          {fetcher.data?.product && (
-            <s-button
-              onClick={() => {
-                shopify.intents.invoke?.("edit:shopify/Product", {
-                  value: fetcher.data?.product?.id,
-                });
-              }}
-              target="_blank"
-              variant="tertiary"
-            >
-              Edit product
-            </s-button>
-          )}
-        </s-stack>
-        {fetcher.data?.product && (
-          <s-section heading="productCreate mutation">
-            <s-stack direction="block" gap="base">
-              <s-box
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-                background="subdued"
+    <s-page heading="Order monitor">
+      <s-section padding="none">
+        <s-box padding="base">
+          <s-button-group gap="none">
+            {data.tabs.map((tab) => (
+              <s-button
+                key={tab.id}
+                href={buildPageUrl({ tabId: tab.id })}
+                variant={tab.id === data.tabId ? "primary" : "secondary"}
               >
-                <pre style={{ margin: 0 }}>
-                  <code>{JSON.stringify(fetcher.data.product, null, 2)}</code>
-                </pre>
-              </s-box>
+                {tab.label}
+              </s-button>
+            ))}
+          </s-button-group>
+        </s-box>
 
-              <s-heading>productVariantsBulkUpdate mutation</s-heading>
-              <s-box
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-                background="subdued"
-              >
-                <pre style={{ margin: 0 }}>
-                  <code>{JSON.stringify(fetcher.data.variant, null, 2)}</code>
-                </pre>
-              </s-box>
-            </s-stack>
-          </s-section>
+        {data.orders.length === 0 ? (
+          <s-box padding="base">
+            <s-paragraph>No orders in this view.</s-paragraph>
+          </s-box>
+        ) : (
+          <s-table
+            paginate
+            hasPreviousPage={data.hasPreviousPage}
+            hasNextPage={data.hasNextPage}
+            onPreviousPage={() => {
+              if (data.previousPageUrl) navigate(data.previousPageUrl);
+            }}
+            onNextPage={() => {
+              if (data.nextPageUrl) navigate(data.nextPageUrl);
+            }}
+          >
+            <s-table-header-row>
+              <s-table-header listSlot="primary">Order</s-table-header>
+              <s-table-header listSlot="labeled">Age</s-table-header>
+              <s-table-header listSlot="labeled">Payment</s-table-header>
+              <s-table-header listSlot="labeled">Fulfillment</s-table-header>
+              <s-table-header listSlot="labeled">Total</s-table-header>
+              <s-table-header listSlot="labeled">Items</s-table-header>
+              <s-table-header listSlot="labeled">Last updated</s-table-header>
+              <s-table-header listSlot="inline">Comments</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {data.orders.map((order) => (
+                <s-table-row key={order.id}>
+                  <s-table-cell>
+                    <s-stack direction="inline" gap="small-200" alignItems="center">
+                      <s-link href={`/app/orders/${encodeURIComponent(order.id)}`}>
+                        {order.name}
+                      </s-link>
+                      {order.isTest && <s-badge>Test</s-badge>}
+                      {order.refundPending && <s-badge tone="warning">Refund pending</s-badge>}
+                      {order.staleSince && <s-badge tone="info">Stale</s-badge>}
+                    </s-stack>
+                  </s-table-cell>
+                  <s-table-cell>
+                    <s-stack direction="inline" gap="small-200" alignItems="center">
+                      {order.ageColor && (
+                        <div
+                          style={{
+                            width: 12,
+                            height: 12,
+                            borderRadius: "50%",
+                            background: order.ageColor,
+                            flexShrink: 0,
+                          }}
+                        />
+                      )}
+                      <s-text>{order.ageLabel}</s-text>
+                    </s-stack>
+                  </s-table-cell>
+                  <s-table-cell>
+                    {order.financialStatus ? (
+                      <s-badge {...(order.financialTone ? { tone: order.financialTone } : {})}>
+                        {order.financialStatus}
+                      </s-badge>
+                    ) : (
+                      "—"
+                    )}
+                  </s-table-cell>
+                  <s-table-cell>
+                    {order.fulfillmentStatus ? (
+                      <s-badge {...(order.fulfillmentTone ? { tone: order.fulfillmentTone } : {})}>
+                        {order.fulfillmentStatus}
+                      </s-badge>
+                    ) : (
+                      "—"
+                    )}
+                  </s-table-cell>
+                  <s-table-cell>{order.total}</s-table-cell>
+                  <s-table-cell>{order.itemsCount ?? "—"}</s-table-cell>
+                  <s-table-cell>{order.lastUpdated}</s-table-cell>
+                  <s-table-cell>
+                    <s-link href={`/app/orders/${encodeURIComponent(order.id)}`}>
+                      <s-stack direction="inline" gap="small-200" alignItems="center">
+                        <s-icon type="chat"></s-icon>
+                        <s-text>{order.commentCount}</s-text>
+                      </s-stack>
+                    </s-link>
+                  </s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
         )}
-      </s-section>
-
-      <s-section slot="aside" heading="App template specs">
-        <s-paragraph>
-          <s-text>Framework: </s-text>
-          <s-link href="https://reactrouter.com/" target="_blank">
-            React Router
-          </s-link>
-        </s-paragraph>
-        <s-paragraph>
-          <s-text>Interface: </s-text>
-          <s-link
-            href="https://shopify.dev/docs/api/app-home/using-polaris-components"
-            target="_blank"
-          >
-            Polaris web components
-          </s-link>
-        </s-paragraph>
-        <s-paragraph>
-          <s-text>API: </s-text>
-          <s-link
-            href="https://shopify.dev/docs/api/admin-graphql"
-            target="_blank"
-          >
-            GraphQL
-          </s-link>
-        </s-paragraph>
-        <s-paragraph>
-          <s-text>Database: </s-text>
-          <s-link href="https://www.prisma.io/" target="_blank">
-            Prisma
-          </s-link>
-        </s-paragraph>
-      </s-section>
-
-      <s-section slot="aside" heading="Next steps">
-        <s-unordered-list>
-          <s-list-item>
-            Build an{" "}
-            <s-link
-              href="https://shopify.dev/docs/apps/getting-started/build-app-example"
-              target="_blank"
-            >
-              example app
-            </s-link>
-          </s-list-item>
-          <s-list-item>
-            Explore Shopify&apos;s API with{" "}
-            <s-link
-              href="https://shopify.dev/docs/apps/tools/graphiql-admin-api"
-              target="_blank"
-            >
-              GraphiQL
-            </s-link>
-          </s-list-item>
-        </s-unordered-list>
       </s-section>
     </s-page>
   );

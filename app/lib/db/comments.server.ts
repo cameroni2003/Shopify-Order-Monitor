@@ -63,6 +63,27 @@ export async function countComments(shopDomain: string, shopifyOrderId: string) 
 }
 
 /**
+ * Comment counts for a page of orders in one query (used by the App Home table's comment-count
+ * column) rather than one `countComments` call per row.
+ */
+export async function countCommentsForOrders(
+  shopDomain: string,
+  shopifyOrderIds: string[],
+): Promise<Record<string, number>> {
+  if (shopifyOrderIds.length === 0) return {};
+  const rows = await withShop(shopDomain, (tx) =>
+    tx.orderComment.groupBy({
+      by: ["shopifyOrderId"],
+      where: { shopDomain, shopifyOrderId: { in: shopifyOrderIds }, deletedAt: null },
+      _count: { _all: true },
+    }),
+  );
+  const counts: Record<string, number> = {};
+  for (const row of rows) counts[row.shopifyOrderId] = row._count._all;
+  return counts;
+}
+
+/**
  * Implemented ahead of the UI per docs/PLAN.md — comments are permanent for v1. Both functions
  * refuse to run while COMMENT_EDITING_ENABLED is false, so turning the feature on later is just
  * flipping that flag and adding the buttons, not writing this logic under time pressure.

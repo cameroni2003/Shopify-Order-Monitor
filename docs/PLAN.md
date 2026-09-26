@@ -182,7 +182,26 @@ Shopify's instruction (not on uninstall — uninstall only sets `uninstalledAt`)
    back fully populated — real financial/fulfillment status, totals, everything. The full
    pipeline (EventBridge → SQS → normalize → plan → write) is confirmed working end to end
    against a live Shopify delivery, not just synthetic tests.
-3. App Home tabs + table.
+3. **Done**: App Home tabs + table (`app/routes/app._index.tsx`). Four URL-backed tabs (Needs
+   attention/Completed/Cancelled/Stale — no native tabs component in Polaris App Home, so this
+   follows shopify.dev's documented migration pattern: a segmented `s-button-group` of links,
+   each a real navigable URL). Columns: Order (name + Test/Refund pending/Stale badges), Age
+   (colored via the shop's age rules, highest-threshold-reached-wins), Payment, Fulfillment,
+   Total, Items, Last updated, Comments (icon + count, linking to the not-yet-built order page).
+   Keyset/cursor pagination via `s-table`'s built-in `paginate`/`hasPreviousPage`/`hasNextPage`,
+   wired to real URLs (a comma-encoded ancestor-cursor stack in a `prev` param supports "back").
+   Verified against the real local Postgres: seeded orders across all four statuses plus a
+   never-seen STALE order, confirmed correct sort order, a real two-page pagination round trip,
+   bulk comment counts, and age-rule color resolution, all through the exact query functions the
+   loader calls.
+
+   Also fixed along the way: `@shopify/app-bridge-types`'s global JSX augmentation (which is what
+   makes `<s-app-nav>` etc. typecheck) was only ever being pulled into the program because the
+   old demo `app._index.tsx` happened to import `@shopify/app-bridge-react` — nothing declared
+   that dependency explicitly. Replacing that file broke `app.tsx`'s typecheck as a side effect.
+   Fixed by adding `@shopify/app-bridge-types` as an explicit devDependency and registering it in
+   `tsconfig.json`'s `types`, so this doesn't silently break again the next time a file with that
+   import is removed.
 4. Order detail page + comments.
 5. Settings page.
 6. Uninstall + compliance webhooks.
