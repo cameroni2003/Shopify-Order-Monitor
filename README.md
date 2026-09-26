@@ -11,6 +11,14 @@ developer preview), and verifying the whole pipeline live against real infrastru
 unit tests. The full design log — including mistakes found and fixed by testing against a real
 database and a real event delivery — is in [docs/PLAN.md](docs/PLAN.md).
 
+## Contents
+
+- [What it does](#what-it-does)
+- [Screenshots](#screenshots)
+- [Architecture](#architecture)
+- [Requirements](#requirements)
+- [Running it locally](#running-it-locally)
+
 ## What it does
 
 Order Monitor gives a merchant a single dashboard of every order that hasn't reached a fully
