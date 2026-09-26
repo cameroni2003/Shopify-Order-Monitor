@@ -208,9 +208,10 @@ Shopify's instruction (not on uninstall — uninstall only sets `uninstalledAt`)
    (never Shopify live), so "real time" is client-side polling + React Router revalidation, not a
    websocket/SSE server — no new infra. The page revalidates its own loader every 5s while
    visible (paused via the Page Visibility API when it isn't, and caught up immediately on
-   refocus), skipping any tick where a revalidation is already in flight. A small spinner is the
-   only visible indicator; the table itself updates in place with no navigation/scroll
-   disruption.
+   refocus), skipping any tick where a revalidation is already in flight. Originally paired with
+   a small spinner as a loading indicator; removed on request (the space it reserved to avoid
+   layout shift looked like an odd empty gap above the table) — polling is now silent, and the
+   table updates in place with no visible indicator at all.
 
    **Design change: tabs → separate pages** (post-milestone, on request): the user reported the
    tab row (the `s-button-group` of `s-button href` links) wasn't visible at all. Rather than

@@ -54,20 +54,6 @@ export function OrderListView({ heading, data }: OrderListViewProps) {
   return (
     <s-page heading={heading}>
       <s-section padding="none">
-        <s-box padding="base">
-          {/* Always mounted (never conditionally rendered) so it reserves its own space —
-              toggling visibility here, instead of adding/removing the element, is what keeps
-              the page from shifting when a background poll starts or finishes. */}
-          <span
-            style={{
-              visibility: revalidator.state === "loading" ? "visible" : "hidden",
-              display: "inline-flex",
-            }}
-          >
-            <s-spinner size="base" accessibilityLabel="Refreshing orders"></s-spinner>
-          </span>
-        </s-box>
-
         {data.orders.length === 0 ? (
           <s-box padding="base">
             <s-paragraph>No orders in this view.</s-paragraph>
