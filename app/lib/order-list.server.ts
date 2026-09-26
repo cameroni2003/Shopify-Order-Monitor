@@ -4,6 +4,7 @@ import { getAgeRules, getShowTestOrders } from "./db/settings.server";
 import { resolveAgeColor } from "../../shared/age-rules";
 import {
   ageInDays,
+  buildAdminOrderUrl,
   formatDaysHoursSince,
   formatMoney,
   numericIdFromGid,
@@ -86,6 +87,7 @@ export async function loadOrderListPage({ shopDomain, status, url, basePath }: L
     return {
       id: row.shopifyOrderId,
       name: row.name ?? (numericId ? `#${numericId}` : row.shopifyOrderId),
+      adminUrl: buildAdminOrderUrl(shopDomain, row.shopifyOrderId),
       ageLabel: ageDays == null ? "—" : `${ageDays}d`,
       ageColor: ageDays == null ? null : resolveAgeColor(ageDays, ageRules),
       financialStatus: row.financialStatus,

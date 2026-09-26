@@ -85,9 +85,13 @@ export function OrderListView({ heading, data }: OrderListViewProps) {
                 <s-table-row key={order.id}>
                   <s-table-cell>
                     <s-stack direction="inline" gap="small-200" alignItems="center">
-                      <s-link href={`/app/orders/${encodeURIComponent(order.id)}`}>
-                        {order.name}
-                      </s-link>
+                      {order.adminUrl ? (
+                        <s-link href={order.adminUrl} target="_blank">
+                          {order.name}
+                        </s-link>
+                      ) : (
+                        <s-text>{order.name}</s-text>
+                      )}
                       {order.isTest && <s-badge>Test</s-badge>}
                       {order.refundPending && <s-badge tone="warning">Refund pending</s-badge>}
                       {order.staleSince && <s-badge tone="info">Stale</s-badge>}
