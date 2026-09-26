@@ -172,16 +172,16 @@ Shopify's instruction (not on uninstall — uninstall only sets `uninstalledAt`)
    `worker/eventbridge-envelope.ts` assumed. Locked in as a permanent fixture test,
    `worker/live-payload.test.ts`.
 
-   **New blocker found via that same capture, not a code bug**: this app hasn't been granted
-   Protected Customer Data access, so every Order query comes back `data.order: null` with a
-   `GraphQL errors[].extensions.code: "ACCESS_DENIED"` — regardless of the order's age. Our
-   dataMissing/STALE logic (correctly, per its own design) can't tell this apart from genuine
-   60-day staleness for an order it's never seen before, so every order currently lands in the
-   Stale tab. `worker/index.ts` now detects this specific error code and logs a loud, distinct
-   warning pointing at the fix rather than let it look like an age issue. **Action needed**:
-   Partner Dashboard → API access → Protected customer data → request access (self-serve, applies
-   immediately on a development store, no review needed for dev-only use). Re-trigger an order
-   event afterward to confirm `data.order` starts coming back populated.
+   That same capture also caught this app not yet having Protected Customer Data access — every
+   Order query came back `data.order: null` with a `GraphQL errors[].extensions.code:
+   "ACCESS_DENIED"`, indistinguishable from genuine 60-day staleness to our dataMissing/STALE
+   logic. `worker/index.ts` detects that specific error code and logs a loud, distinct warning
+   rather than let it look like an age issue. **Resolved**: access was granted via Partner
+   Dashboard → API access → Protected customer data (self-serve, immediate on a dev store), and a
+   second live capture (also in `worker/live-payload.test.ts`) confirms `data.order` now comes
+   back fully populated — real financial/fulfillment status, totals, everything. The full
+   pipeline (EventBridge → SQS → normalize → plan → write) is confirmed working end to end
+   against a live Shopify delivery, not just synthetic tests.
 3. App Home tabs + table.
 4. Order detail page + comments.
 5. Settings page.
