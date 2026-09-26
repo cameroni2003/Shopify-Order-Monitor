@@ -1,5 +1,6 @@
+import { useEffect } from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useNavigate } from "react-router";
+import { useLoaderData, useNavigate, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getAgeRules, getShowTestOrders } from "../lib/db/settings.server";
@@ -16,6 +17,15 @@ import { financialStatusTone, fulfillmentStatusTone } from "../../shared/status-
 import type { OrderStatus } from "../../shared/order-status";
 
 const PAGE_SIZE = 50;
+
+/**
+ * App Home reads from our own database, not live from Shopify (docs/PLAN.md), so "real time"
+ * here means polling our own (cheap, indexed) query on an interval and letting React Router
+ * revalidate the loader in place — no new infra, no websocket/SSE server. Order statuses change
+ * on the order of seconds after a Shopify event, not sub-second, so a 5s interval is "real enough
+ * time" without hammering Postgres.
+ */
+const POLL_INTERVAL_MS = 5000;
 
 interface TabDef {
   id: string;
@@ -149,22 +159,56 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export default function AppIndex() {
   const data = useLoaderData<typeof loader>();
   const navigate = useNavigate();
+  const revalidator = useRevalidator();
+
+  // Poll for status changes while this page is open, so an order that gets fulfilled/paid/
+  // cancelled elsewhere (or by the worker processing a new event) shows up without a manual
+  // reload. Paused while the tab isn't visible, and skipped whenever a revalidation (or the
+  // initial load) is already in flight, so polls never stack up.
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === "visible" && revalidator.state === "idle") {
+        revalidator.revalidate();
+      }
+    }, POLL_INTERVAL_MS);
+
+    function handleVisibilityChange() {
+      // Catch up immediately on refocus rather than waiting out the rest of the interval.
+      if (document.visibilityState === "visible" && revalidator.state === "idle") {
+        revalidator.revalidate();
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+    // revalidator's identity is stable across renders; re-running this effect on every
+    // revalidator.state change would tear down and restart the interval on each poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <s-page heading="Order monitor">
       <s-section padding="none">
         <s-box padding="base">
-          <s-button-group gap="none">
-            {data.tabs.map((tab) => (
-              <s-button
-                key={tab.id}
-                href={buildPageUrl({ tabId: tab.id })}
-                variant={tab.id === data.tabId ? "primary" : "secondary"}
-              >
-                {tab.label}
-              </s-button>
-            ))}
-          </s-button-group>
+          <s-stack direction="inline" gap="base" alignItems="center">
+            <s-button-group gap="none">
+              {data.tabs.map((tab) => (
+                <s-button
+                  key={tab.id}
+                  href={buildPageUrl({ tabId: tab.id })}
+                  variant={tab.id === data.tabId ? "primary" : "secondary"}
+                >
+                  {tab.label}
+                </s-button>
+              ))}
+            </s-button-group>
+            {revalidator.state === "loading" && (
+              <s-spinner size="base" accessibilityLabel="Refreshing orders"></s-spinner>
+            )}
+          </s-stack>
         </s-box>
 
         {data.orders.length === 0 ? (

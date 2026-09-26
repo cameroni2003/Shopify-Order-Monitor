@@ -202,6 +202,14 @@ Shopify's instruction (not on uninstall — uninstall only sets `uninstalledAt`)
    Fixed by adding `@shopify/app-bridge-types` as an explicit devDependency and registering it in
    `tsconfig.json`'s `types`, so this doesn't silently break again the next time a file with that
    import is removed.
+
+   **Real-time updates** (added post-milestone, on request): App Home reads our own database
+   (never Shopify live), so "real time" is client-side polling + React Router revalidation, not a
+   websocket/SSE server — no new infra. `app/routes/app._index.tsx` revalidates its own loader
+   every 5s while the tab is visible (paused via the Page Visibility API when it isn't, and
+   caught up immediately on refocus), skipping any tick where a revalidation is already in
+   flight. A small spinner next to the tabs is the only visible indicator; the table itself
+   updates in place with no navigation/scroll disruption.
 4. Order detail page + comments.
 5. Settings page.
 6. Uninstall + compliance webhooks.
