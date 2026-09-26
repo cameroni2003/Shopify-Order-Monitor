@@ -244,4 +244,38 @@ Shopify's instruction (not on uninstall — uninstall only sets `uninstalledAt`)
    pattern in `applyOrderEvent`. Also cleaned up: an invalid setting value used to throw a raw,
    JSON-stringified Zod error; `setSetting` now formats a short, readable message per field
    instead.
-6. Uninstall + compliance webhooks.
+6. **Done**: uninstall handling and the three mandatory compliance webhooks.
+   `webhooks.app.uninstalled.tsx` now also calls `markShopUninstalled` (data retained, per
+   docs/PLAN.md — only sets `uninstalledAt`). `webhooks.customers.data_request.tsx` and
+   `webhooks.customers.redact.tsx` just acknowledge, since this schema stores no customer PII
+   anywhere. `webhooks.shop.redact.tsx` calls `deleteShopData` — the one deliberate exception to
+   "retain forever."
+
+   **Two idempotency bugs caught by live-testing against Postgres, not just unit tests**:
+   `markShopUninstalled` used a plain `update`, which throws if the `Shop` row doesn't exist yet
+   (a shop that installs and uninstalls before ever triggering an order event or visiting
+   Settings would never have one) — changed to an `upsert`. `deleteShopData` used a plain
+   `delete`, which throws on a second delivery of the same webhook (Shopify's delivery is
+   at-least-once) or a shop that was never registered — now catches Prisma's "record not found"
+   (P2025) and treats it as success rather than an error to retry. Verified live: a shop with no
+   prior row at all handles both webhooks cleanly, a duplicate `shop/redact` delivery is a
+   harmless no-op, and a shop with real orders/comments/settings is fully wiped (all three tables
+   at zero, `Shop` row gone) by a single call.
+
+## Status
+
+All six milestones are done. Known, deliberate gaps — not bugs, just out of scope for this pass
+(see the original conversation for the reasoning behind each):
+
+- **Backfill** for a newly installed shop's pre-existing orders — out of scope from the start,
+  planned as a separate feature on a different page later.
+- **Comment editing/deleting** — implemented in `app/lib/db/comments.server.ts`, gated off by
+  `COMMENT_EDITING_ENABLED=false`, no UI. Flip the flag and add buttons when wanted.
+- **`read_all_orders`** hasn't been requested, so an order can go `STALE` once it crosses the
+  60-day `read_orders` window rather than staying current — see "60-day order window" above.
+- **The worker isn't containerized or process-supervised** — it's `bun run worker`, run manually
+  in a separate terminal. Fine for local/dev use; would need a real process manager (or a second
+  container/service) for anything longer-running.
+- **AWS infrastructure** (partner event source, bus, rule, queue, DLQ) is managed entirely outside
+  this repo, per the user's explicit instruction — the app only ever reads environment variables
+  for it.

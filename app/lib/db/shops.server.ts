@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import db from "../../db.server";
 import { assertValidShopDomain, withShop } from "./shop-scope.server";
 
@@ -18,9 +19,13 @@ export async function ensureShop(shopDomain: string) {
 
 export async function markShopUninstalled(shopDomain: string) {
   assertValidShopDomain(shopDomain);
-  return db.shop.update({
+  // upsert, not update: nothing guarantees ensureShop() has run before app/uninstalled arrives
+  // (e.g. a shop that installs and uninstalls before ever triggering an order event or visiting
+  // Settings), so the row may not exist yet.
+  return db.shop.upsert({
     where: { shopDomain },
-    data: { uninstalledAt: new Date() },
+    create: { shopDomain, uninstalledAt: new Date() },
+    update: { uninstalledAt: new Date() },
   });
 }
 
@@ -45,5 +50,15 @@ export async function deleteShopData(shopDomain: string) {
     await tx.shopSetting.deleteMany({ where: { shopDomain } });
     await tx.order.deleteMany({ where: { shopDomain } });
   });
-  await db.shop.delete({ where: { shopDomain } });
+  try {
+    await db.shop.delete({ where: { shopDomain } });
+  } catch (err) {
+    // shop/redact delivery is at-least-once, and could in principle arrive for a shop that was
+    // never actually registered (e.g. uninstalled before ensureShop ever ran) — either way,
+    // "already gone" is success here, not an error to surface/retry.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
+      return;
+    }
+    throw err;
+  }
 }
