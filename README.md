@@ -3,12 +3,12 @@
 An experimental Shopify app, built primarily as a portfolio piece and as a hands-on
 exploration of what's possible when [Claude Code](https://claude.com/claude-code) is used as
 the developer. I architected the system myself — the event-driven ingestion pipeline off
-Shopify's Events framework, AWS EventBridge and SQS as the message queue, the multi-tenant
+Shopify's new Events framework, AWS EventBridge and SQS as the message queue, the multi-tenant
 Postgres data model with row-level security, and the order-status/comment/settings design — and
 used Claude Code to implement that vision end to end: writing the app and worker, standing up a
-proper data model, working through a genuinely undocumented API surface (Shopify's Events
-developer preview), and verifying the whole pipeline live against real infrastructure, not just
-unit tests. The full design log — including mistakes found and fixed by testing against a real
+proper data model, working through an API surface that's still in developer preview (Shopify's
+Events framework, documented but early and changing under it), and verifying the whole pipeline
+live against real infrastructure, not just unit tests. The full design log — including mistakes found and fixed by testing against a real
 database and a real event delivery — is in [docs/PLAN.md](docs/PLAN.md).
 
 ## Contents
@@ -27,6 +27,16 @@ arrives asynchronously via Shopify's [Events framework](https://shopify.dev/docs
 (EventBridge → SQS → a worker process), gets normalized and written to the app's own Postgres
 database, and the UI always reads from that database — never live from Shopify's API — so the
 dashboard stays fast and available even if Shopify's API is slow or rate-limiting.
+
+Events is Shopify's new, next-generation subscription mechanism — announced in 2026 and still in
+developer preview on the `unstable` API version — and it's the direction Shopify is moving apps
+toward, away from classic webhooks. Instead of subscribing to a broad topic and filtering
+relevance in your own handler, Events let you declare field-level triggers, a custom GraphQL query
+to shape the payload, and delivery filters directly in `shopify.app.toml`, so you only receive the
+data you actually need, only when it changes. Coverage is still limited to a handful of topics
+(Product and Customer, with more rolling out through 2026), so most production apps today use
+Events alongside classic webhooks rather than instead of them — this project builds on Events
+specifically to work with that new surface rather than the well-trodden webhooks path.
 
 Each order is classified into one of four statuses:
 
