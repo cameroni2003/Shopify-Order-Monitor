@@ -146,11 +146,19 @@ this repo; the app only needs the resulting environment variables.
    npm run setup
    ```
 
-4. **Link the app to the Shopify app you created:**
+4. **Set up `shopify.app.toml`.** Copy the checked-in template, then link it to the app you
+   created:
 
    ```bash
+   cp shopify.app.toml.example shopify.app.toml
    npm run config:link
    ```
+
+   `shopify app config link` fills in `client_id` and `application_url` for the app you select
+   (this file is gitignored, since those values — and the AWS ARN below — are specific to your
+   own app and AWS account). It does **not** know about your AWS infrastructure, so you'll still
+   need to manually replace the `uri` placeholder under `[events]` with your own AWS EventBridge
+   partner event source ARN (see Requirements) before running `npm run deploy`.
 
 5. **Run the web app:**
 

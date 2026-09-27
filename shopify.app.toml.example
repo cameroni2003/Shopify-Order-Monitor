@@ -4,7 +4,7 @@
 # client_id and application_url for your own app. You'll also need to provision your own AWS
 # EventBridge partner event source (see README) and fill in its ARN below under [events].
 
-client_id = "your-client-id"
+client_id = "REPLACE_WITH_YOUR_CLIENT_ID"
 name = "Order Monitor"
 application_url = "https://example.com"
 embedded = true
@@ -57,7 +57,7 @@ api_version = "unstable"
   # Your own AWS EventBridge partner event source ARN, created when you connect your AWS
   # account to Shopify's Events framework. Format:
   # arn:aws:events:<region>::event-source/aws.partner/shopify.com/<your-aws-account-id>/<handle>
-  uri = "arn:aws:events:us-east-2::event-source/aws.partner/shopify.com/YOUR_AWS_ACCOUNT_ID/shopify-order-monitor"
+  uri = "REPLACE_WITH_YOUR_AWS_EVENTBRIDGE_PARTNER_EVENT_SOURCE_ARN"
 
   query = """
   query order_status($orderId: ID!) {
