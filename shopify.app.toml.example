@@ -1,0 +1,87 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+#
+# Copy this file to shopify.app.toml and run `shopify app config link` to have the CLI fill in
+# client_id and application_url for your own app. You'll also need to provision your own AWS
+# EventBridge partner event source (see README) and fill in its ARN below under [events].
+
+client_id = "your-client-id"
+name = "Order Monitor"
+application_url = "https://example.com"
+embedded = true
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_orders"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[webhooks]
+api_version = "2026-07"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+  # Mandatory compliance webhooks (milestone 6). This app stores no customer PII, so
+  # customers/data_request and customers/redact just acknowledge; shop/redact deletes the shop's
+  # rows via app/lib/db/shops.server.ts::deleteShopData. See docs/PLAN.md.
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/data_request"
+  compliance_topics = [ "customers/data_request" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/redact"
+  compliance_topics = [ "customers/redact" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shop/redact"
+  compliance_topics = [ "shop/redact" ]
+
+[events]
+# Developer preview, unstable-only — see docs/PLAN.md, "Ground truth from shopify.dev".
+api_version = "unstable"
+
+  [[events.subscription]]
+  handle = "order_status_changes"
+  topic = "Order"
+  actions = ["create", "update", "delete"]
+  triggers = [
+    "order.displayFinancialStatus",
+    "order.displayFulfillmentStatus",
+    "order.cancellation",
+  ]
+  # Your own AWS EventBridge partner event source ARN, created when you connect your AWS
+  # account to Shopify's Events framework. Format:
+  # arn:aws:events:<region>::event-source/aws.partner/shopify.com/<your-aws-account-id>/<handle>
+  uri = "arn:aws:events:us-east-2::event-source/aws.partner/shopify.com/YOUR_AWS_ACCOUNT_ID/shopify-order-monitor"
+
+  query = """
+  query order_status($orderId: ID!) {
+    order(id: $orderId) {
+      id
+      name
+      displayFinancialStatus
+      displayFulfillmentStatus
+      cancellation { __typename }
+      cancelledAt
+      createdAt
+      updatedAt
+      closed
+      closedAt
+      test
+      currentTotalPriceSet { shopMoney { amount currencyCode } }
+      currentSubtotalLineItemsQuantity
+    }
+  }
+  """
+
+[auth]
+redirect_urls = [ ]
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = true
