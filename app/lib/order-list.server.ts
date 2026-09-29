@@ -1,4 +1,4 @@
-import { listNeedsAttentionOrders, listOrdersByStatus } from "./db/orders.server";
+import { listOrdersByStatus } from "./db/orders.server";
 import { countCommentsForOrders } from "./db/comments.server";
 import { getAgeRules, getShowTestOrders } from "./db/settings.server";
 import { resolveAgeColor } from "../../shared/age-rules";
@@ -56,18 +56,13 @@ export async function loadOrderListPage({ shopDomain, status, url, basePath }: L
     getShowTestOrders(shopDomain),
   ]);
 
-  const rows =
-    status === "NEEDS_ATTENTION"
-      ? await listNeedsAttentionOrders(shopDomain, {
-          cursor,
-          take: PAGE_SIZE,
-          includeTestOrders: showTestOrders,
-        })
-      : await listOrdersByStatus(shopDomain, status as Exclude<OrderStatus, "DELETED" | "NEEDS_ATTENTION">, {
-          cursor,
-          take: PAGE_SIZE,
-          includeTestOrders: showTestOrders,
-        });
+  // Needs attention is a work queue (oldest first); Completed/Cancelled/Stale are history (newest first).
+  const rows = await listOrdersByStatus(shopDomain, status as Exclude<OrderStatus, "DELETED">, {
+    sort: status === "NEEDS_ATTENTION" ? "oldest-created" : "recently-updated",
+    cursor,
+    take: PAGE_SIZE,
+    includeTestOrders: showTestOrders,
+  });
 
   const hasNextPage = rows.length > PAGE_SIZE;
   const pageRows = rows.slice(0, PAGE_SIZE);

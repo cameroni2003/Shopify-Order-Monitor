@@ -100,36 +100,29 @@ export async function findOrder(shopDomain: string, shopifyOrderId: string) {
   );
 }
 
+/**
+ * - "oldest-created": ascending by createdAt (a work queue — longest-waiting first).
+ * - "recently-updated": descending by updatedAt (history — newest change first).
+ * shopifyOrderId is the tiebreaker in the same direction so the cursor stays stable.
+ */
+export type OrderListSort = "oldest-created" | "recently-updated";
+
+const ORDER_BY: Record<OrderListSort, Prisma.OrderOrderByWithRelationInput[]> = {
+  "oldest-created": [{ shopifyCreatedAt: "asc" }, { shopifyOrderId: "asc" }],
+  "recently-updated": [{ shopifyUpdatedAt: "desc" }, { shopifyOrderId: "desc" }],
+};
+
 export interface ListOrdersOptions {
+  sort: OrderListSort;
   cursor?: string;
   take?: number;
   includeTestOrders?: boolean;
 }
 
-/** Ascending by createdAt — used only by the Needs attention tab (oldest first). */
-export async function listNeedsAttentionOrders(
-  shopDomain: string,
-  { cursor, take = 50, includeTestOrders = true }: ListOrdersOptions = {},
-) {
-  return withShop(shopDomain, (tx) =>
-    tx.order.findMany({
-      where: {
-        shopDomain,
-        orderStatus: "NEEDS_ATTENTION" satisfies OrderStatus,
-        ...(includeTestOrders ? {} : { isTest: false }),
-      },
-      orderBy: [{ shopifyCreatedAt: "asc" }, { shopifyOrderId: "asc" }],
-      take: take + 1,
-      ...(cursor ? { cursor: { shopDomain_shopifyOrderId: { shopDomain, shopifyOrderId: cursor } }, skip: 1 } : {}),
-    }),
-  );
-}
-
-/** Descending by updatedAt — used by Completed, Cancelled, and Stale (all newest first). */
 export async function listOrdersByStatus(
   shopDomain: string,
-  status: Exclude<OrderStatus, "DELETED" | "NEEDS_ATTENTION">,
-  { cursor, take = 50, includeTestOrders = true }: ListOrdersOptions = {},
+  status: Exclude<OrderStatus, "DELETED">,
+  { sort, cursor, take = 50, includeTestOrders = true }: ListOrdersOptions,
 ) {
   return withShop(shopDomain, (tx) =>
     tx.order.findMany({
@@ -138,7 +131,7 @@ export async function listOrdersByStatus(
         orderStatus: status,
         ...(includeTestOrders ? {} : { isTest: false }),
       },
-      orderBy: [{ shopifyUpdatedAt: "desc" }, { shopifyOrderId: "desc" }],
+      orderBy: ORDER_BY[sort],
       take: take + 1,
       ...(cursor ? { cursor: { shopDomain_shopifyOrderId: { shopDomain, shopifyOrderId: cursor } }, skip: 1 } : {}),
     }),
