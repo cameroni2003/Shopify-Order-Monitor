@@ -127,6 +127,20 @@ this repo; the app only needs the resulting environment variables.
   [shopify.dev's guide to creating an app](https://shopify.dev/docs/apps/build/scaffold-app)
   for how to create one before continuing below
 
+## Running the worker separately (Docker)
+
+The worker ships as its own image ([worker/Dockerfile](worker/Dockerfile)) so it can run on a
+different machine from the web app. It needs only the database and SQS — see
+[worker/.env.example](worker/.env.example).
+
+1. Push to `main`; [the workflow](.github/workflows/worker-image.yml) publishes
+   `ghcr.io/cameroni2003/order-monitor-worker` (amd64 + arm64). The package is private by default:
+   either make it public in GitHub (Packages → Package settings), or run `docker login ghcr.io`
+   on the host once with a PAT that has `read:packages`.
+2. On the host, put [worker/docker-compose.yml](worker/docker-compose.yml) next to a `.env` copied
+   from `worker/.env.example` and filled in, then `docker compose up -d`.
+3. To update after a new image is published: `docker compose pull && docker compose up -d`.
+
 ## Using Neon (hosted Postgres)
 
 The app works with any Postgres, including [Neon](https://neon.com). The one thing to get right

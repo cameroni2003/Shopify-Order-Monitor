@@ -1,0 +1,19 @@
+# Runs only the SQS worker (no web app, no Postgres). Values come from a .env file next to this
+# one (see worker/.env.example); compose refuses to start if a required one is missing.
+#
+# The image is built and pushed to GHCR by .github/workflows/worker-image.yml on every push to
+# main that touches the worker. If the package is private, run `docker login ghcr.io` on the host
+# once with a GitHub PAT that has read:packages (or make the package public).
+services:
+  worker:
+    image: ghcr.io/cameroni2003/order-monitor-worker:latest
+    container_name: order-monitor-worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      QUEUE_PROVIDER: aws
+      AWS_REGION: ${AWS_REGION:?set AWS_REGION}
+      SQS_QUEUE_URL: ${SQS_QUEUE_URL:?set SQS_QUEUE_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?set AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY}
+    stop_grace_period: 30s
