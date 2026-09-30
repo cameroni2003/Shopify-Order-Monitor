@@ -1,5 +1,5 @@
 import { reactRouter } from "@react-router/dev/vite";
-import { defineConfig, type UserConfig } from "vite";
+import { defineConfig, type PluginOption, type UserConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 // Related: https://github.com/remix-run/remix/issues/2835#issuecomment-1144102176
@@ -35,6 +35,16 @@ if (host === "localhost") {
   };
 }
 
+// Netlify adapter is opt-in (USE_NETLIFY=true) and imported lazily so the package is never
+// loaded for other targets (local dev, Docker, Pi, etc.). netlify.toml sets this for Netlify builds.
+const plugins: PluginOption[] = [reactRouter(), tsconfigPaths()];
+if (process.env.USE_NETLIFY === "true") {
+  const { default: netlifyReactRouter } = await import(
+    "@netlify/vite-plugin-react-router"
+  );
+  plugins.splice(1, 0, netlifyReactRouter());
+}
+
 export default defineConfig({
   server: {
     allowedHosts: [host],
@@ -48,10 +58,7 @@ export default defineConfig({
       allow: ["app", "node_modules"],
     },
   },
-  plugins: [
-    reactRouter(),
-    tsconfigPaths(),
-  ],
+  plugins,
   build: {
     assetsInlineLimit: 0,
   },

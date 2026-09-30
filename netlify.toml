@@ -1,0 +1,7 @@
+[build]
+  command = "prisma generate && react-router build"
+  publish = "build/client"
+
+[build.environment]
+  NODE_VERSION = "22"
+  USE_NETLIFY = "true"

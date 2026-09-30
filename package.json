@@ -48,6 +48,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@netlify/vite-plugin-react-router": "^4.0.0",
     "@shopify/api-codegen-preset": "^2.0.0",
     "@shopify/app-bridge-types": "^0.7.2",
     "@shopify/polaris-types": "1.0.1",

@@ -2,7 +2,9 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // rhel target = Netlify Functions runtime (AWS Lambda, Amazon Linux)
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
