@@ -127,6 +127,36 @@ this repo; the app only needs the resulting environment variables.
   [shopify.dev's guide to creating an app](https://shopify.dev/docs/apps/build/scaffold-app)
   for how to create one before continuing below
 
+## Using Neon (hosted Postgres)
+
+The app works with any Postgres, including [Neon](https://neon.com). The one thing to get right
+is the database role: tenant isolation relies on row-level security, and Neon's default
+`neondb_owner` role is a member of `neon_superuser`, which has `BYPASSRLS`. Connecting as it
+silently disables every policy. Create a dedicated role instead, in the Neon SQL editor:
+
+```sql
+CREATE ROLE app LOGIN PASSWORD '<strong-password>' CREATEDB;
+GRANT ALL ON DATABASE neondb TO app;   -- use your database's name
+GRANT ALL ON SCHEMA public TO app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app;
+```
+
+(`CREATEDB` is only needed for `prisma migrate dev`, not in production. Create the role with SQL,
+not the console's "Add role" button, which grants `neon_superuser` membership.)
+
+Then set both URLs to connect as `app`, with `sslmode=require`:
+
+- `DATABASE_URL` — the pooled connection (host contains `-pooler`), with `&pgbouncer=true`
+- `DIRECT_URL` — the direct connection, used by `prisma migrate` (which needs advisory locks that
+  PgBouncer doesn't support)
+
+Run migrations (`npm run setup`) as `app` too, so it owns the tables and `FORCE ROW LEVEL
+SECURITY` applies to it. Afterwards, confirm as `app` that this returns `f | f`:
+
+```sql
+SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user;
+```
+
 ## Running it locally
 
 1. **Start Postgres.** This repo includes a `docker-compose.yml` for local development:
@@ -141,8 +171,9 @@ this repo; the app only needs the resulting environment variables.
    cp .env.example .env
    ```
 
-   - `DATABASE_URL` is already set correctly for the docker-compose database — the app connects
-     as the non-superuser `app` role (not `postgres`), which row-level security depends on.
+   - `DATABASE_URL` and `DIRECT_URL` are already set correctly for the docker-compose database —
+     the app connects as the non-superuser `app` role (not `postgres`), which row-level security
+     depends on. (For Neon, see [Using Neon](#using-neon-hosted-postgres).)
    - `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, and `SHOPIFY_APP_URL` are filled in automatically by
      `shopify app config link` (below), or can be set by hand.
    - `AWS_REGION` and `SQS_QUEUE_URL` point at your own AWS infrastructure (see Requirements).
