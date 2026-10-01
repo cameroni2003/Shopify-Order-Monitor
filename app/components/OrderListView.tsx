@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { useNavigate, useRevalidator } from "react-router";
+import { useNavigate } from "react-router";
+import { useRevalidateOnInterval } from "../hooks/useRevalidateOnInterval";
 import type { OrderListPageData } from "../lib/order-list.server";
 
 /**
@@ -23,35 +23,11 @@ export interface OrderListViewProps {
  */
 export function OrderListView({ heading, data, basePath }: OrderListViewProps) {
   const navigate = useNavigate();
-  const revalidator = useRevalidator();
 
   // Poll for status changes while this page is open, so an order that gets fulfilled/paid/
   // cancelled elsewhere (or by the worker processing a new event) shows up without a manual
-  // reload. Paused while the tab isn't visible, and skipped whenever a revalidation (or the
-  // initial load) is already in flight, so polls never stack up.
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      if (document.visibilityState === "visible" && revalidator.state === "idle") {
-        revalidator.revalidate();
-      }
-    }, POLL_INTERVAL_MS);
-
-    function handleVisibilityChange() {
-      // Catch up immediately on refocus rather than waiting out the rest of the interval.
-      if (document.visibilityState === "visible" && revalidator.state === "idle") {
-        revalidator.revalidate();
-      }
-    }
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-    // revalidator's identity is stable across renders; re-running this effect on every
-    // revalidator.state change would tear down and restart the interval on each poll.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // reload.
+  useRevalidateOnInterval(POLL_INTERVAL_MS);
 
   return (
     <s-page heading={heading}>
